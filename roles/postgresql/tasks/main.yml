@@ -1,0 +1,105 @@
+---
+- name: Install PostgreSQL repository key
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Add PostgreSQL repository
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+
+- name: Install PostgreSQL
+  apt:
+    name:
+      - "postgresql-{{ postgresql_version }}"
+      - "postgresql-contrib-{{ postgresql_version }}"
+      - postgresql-client
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+
+- name: Ensure PostgreSQL is started and enabled
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Configure PostgreSQL - listen addresses
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = '{{ postgresql_listen_addresses }}'"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL - performance
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?{{ item.key }}"
+    line: "{{ item.key }} = {{ item.value }}"
+  loop:
+    - { key: 'shared_buffers', value: "'{{ postgresql_shared_buffers }}'" }
+    - { key: 'effective_cache_size', value: "'{{ postgresql_effective_cache_size }}'" }
+    - { key: 'maintenance_work_mem', value: "'{{ postgresql_maintenance_work_mem }}'" }
+    - { key: 'work_mem', value: "'{{ postgresql_work_mem }}'" }
+    - { key: 'max_connections', value: "{{ postgresql_max_connections }}" }
+  notify: restart postgresql
+
+- name: Configure pg_hba.conf for remote connections
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host    all             all             {{ hostvars[item].ansible_host }}/32            scram-sha-256"
+    insertafter: "^# IPv4 local connections:"
+  loop: "{{ groups['webservers'] }}"
+  notify: restart postgresql
+
+- name: Create PostgreSQL databases
+  postgresql_db:
+    name: "{{ item.name }}"
+    encoding: "{{ item.encoding }}"
+    lc_collate: "{{ item.lc_collate }}"
+    lc_ctype: "{{ item.lc_ctype }}"
+    state: present
+  loop: "{{ postgresql_databases }}"
+  become: yes
+  become_user: postgres
+
+- name: Create PostgreSQL users
+  postgresql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+    db: "{{ item.db }}"
+    priv: "{{ item.priv }}"
+    state: present
+  loop: "{{ postgresql_users }}"
+  become: yes
+  become_user: postgres
+  no_log: true
+
+- name: Create backup directory
+  file:
+    path: "{{ backup_dir }}/postgresql"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+  when: postgresql_backup_enabled | default(false)
+
+- name: Create PostgreSQL backup script
+  template:
+    src: backup_postgres.sh.j2
+    dest: /usr/local/bin/backup_postgres.sh
+    owner: postgres
+    group: postgres
+    mode: '0750'
+  when: postgresql_backup_enabled | default(false)
+
+- name: Schedule PostgreSQL backups
+  cron:
+    name: "PostgreSQL backup"
+    minute: "{{ postgresql_backup_minute }}"
+    hour: "{{ postgresql_backup_hour }}"
+    job: "/usr/local/bin/backup_postgres.sh"
+    user: postgres
+  when: postgresql_backup_enabled | default(false)

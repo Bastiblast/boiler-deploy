@@ -1,0 +1,101 @@
+---
+- name: Get latest commit hash
+  shell: "git ls-remote {{ app_repo }} {{ app_branch }} | awk '{print $1}'"
+  register: git_commit
+  delegate_to: localhost
+  become: no
+
+- name: Set release name
+  set_fact:
+    release_name: "{{ ansible_date_time.iso8601_basic_short }}_{{ git_commit.stdout[:7] }}"
+    release_path: "{{ app_releases_dir }}/{{ ansible_date_time.iso8601_basic_short }}_{{ git_commit.stdout[:7] }}"
+
+- name: Clone repository
+  git:
+    repo: "{{ app_repo }}"
+    dest: "{{ release_path }}"
+    version: "{{ app_branch }}"
+    accept_hostkey: yes
+  become: yes
+  become_user: "{{ deploy_user }}"
+
+- name: Link shared files
+  file:
+    src: "{{ app_shared_dir }}/config/.env"
+    dest: "{{ release_path }}/.env"
+    state: link
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+
+- name: Install Node.js dependencies
+  npm:
+    path: "{{ release_path }}"
+    production: yes
+    state: present
+  become: yes
+  become_user: "{{ deploy_user }}"
+
+- name: Build application (if build script exists)
+  shell: npm run build
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: "'build' in lookup('file', release_path + '/package.json')"
+  ignore_errors: yes
+
+- name: Create PM2 ecosystem file
+  template:
+    src: ecosystem.config.js.j2
+    dest: "{{ release_path }}/ecosystem.config.js"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: '0644'
+
+- name: Update symlink to current release
+  file:
+    src: "{{ release_path }}"
+    dest: "{{ app_current_dir }}"
+    state: link
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+
+- name: Check if PM2 is already running the app
+  shell: "pm2 list | grep -q {{ pm2_app_name }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  register: pm2_running
+  ignore_errors: yes
+  changed_when: false
+
+- name: Start or reload application with PM2
+  shell: |
+    cd {{ app_current_dir }}
+    {% if pm2_running.rc == 0 %}
+    pm2 reload ecosystem.config.js
+    {% else %}
+    pm2 start ecosystem.config.js
+    {% endif %}
+    pm2 save
+  become: yes
+  become_user: "{{ deploy_user }}"
+  environment:
+    PATH: "/usr/bin:{{ ansible_env.PATH }}"
+
+- name: Wait for application to start
+  wait_for:
+    port: "{{ app_port }}"
+    delay: 5
+    timeout: 60
+
+- name: Keep only last 5 releases
+  shell: "ls -1dt {{ app_releases_dir }}/* | tail -n +6 | xargs rm -rf"
+  ignore_errors: yes
+
+- name: Display deployment info
+  debug:
+    msg:
+      - "Application deployed successfully!"
+      - "Release: {{ release_name }}"
+      - "Path: {{ release_path }}"
+      - "Current: {{ app_current_dir }}"

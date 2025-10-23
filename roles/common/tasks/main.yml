@@ -1,0 +1,68 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Upgrade all packages
+  apt:
+    upgrade: dist
+    autoremove: yes
+    autoclean: yes
+
+- name: Install common packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - net-tools
+      - software-properties-common
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - python3
+      - python3-pip
+      - acl
+      - rsync
+      - unzip
+    state: present
+
+- name: Set timezone
+  timezone:
+    name: "{{ timezone }}"
+
+- name: Create deploy user
+  user:
+    name: "{{ deploy_user }}"
+    groups: "{{ deploy_user_groups }}"
+    shell: /bin/bash
+    create_home: yes
+    state: present
+
+- name: Add SSH key for deploy user
+  authorized_key:
+    user: "{{ deploy_user }}"
+    key: "{{ lookup('file', ssh_key_path) }}"
+    state: present
+
+- name: Allow deploy user to sudo without password
+  lineinfile:
+    path: /etc/sudoers.d/{{ deploy_user }}
+    line: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL"
+    create: yes
+    mode: '0440'
+    validate: 'visudo -cf %s'
+
+- name: Configure systemd journal retention
+  lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: '^#?SystemMaxUse=', line: 'SystemMaxUse=500M' }
+    - { regexp: '^#?MaxRetentionSec=', line: 'MaxRetentionSec=1month' }
+  notify: restart journald

@@ -1,0 +1,21 @@
+module.exports = {
+  apps: [{
+    name: '{{ pm2_app_name }}',
+    script: './index.js',  // Adjust to your main file (app.js, server.js, etc.)
+    instances: {{ pm2_instances }},
+    exec_mode: 'cluster',
+    max_memory_restart: '{{ pm2_max_memory }}',
+    env: {
+      NODE_ENV: '{{ node_env }}',
+      PORT: {{ app_port }}
+    },
+    error_file: '{{ app_shared_dir }}/logs/pm2-error.log',
+    out_file: '{{ app_shared_dir }}/logs/pm2-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    merge_logs: true,
+    autorestart: true,
+    watch: false,
+    max_restarts: 10,
+    min_uptime: '10s'
+  }]
+};

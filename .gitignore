@@ -1,0 +1,44 @@
+# Ansible deployment configuration
+*.retry
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# Local configuration overrides (keep these out of git!)
+*local.yml
+*secret*.yml
+vault-password.txt
+.vault-password
+
+# Sensitive files - DO NOT COMMIT
+group_vars/all.yml
+group_vars/dbservers.yml
+inventory/*/hosts.yml
+
+# Instead, commit .example files
+!*.example.yml
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+/tmp/
+.tmp/
+*.tmp
+
+# Facts cache
+/tmp/ansible_facts/
+
+# Health check reports
+health_check_*.log

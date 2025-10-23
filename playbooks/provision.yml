@@ -1,0 +1,68 @@
+---
+- name: Provision all servers
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Wait for system to become reachable
+      wait_for_connection:
+        timeout: 300
+
+    - name: Gather facts
+      setup:
+
+  roles:
+    - common
+    - security
+
+- name: Setup database servers
+  hosts: dbservers
+  become: yes
+
+  roles:
+    - postgresql
+
+- name: Setup web servers
+  hosts: webservers
+  become: yes
+
+  roles:
+    - nodejs
+    - nginx
+
+- name: Setup monitoring
+  hosts: all
+  become: yes
+
+  roles:
+    - monitoring
+
+- name: Display summary
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Show provisioning summary
+      debug:
+        msg:
+          - "=========================================="
+          - "Provisioning completed successfully!"
+          - "=========================================="
+          - "Web Servers:"
+          - "{% for host in groups['webservers'] %}  - {{ host }}: {{ hostvars[host].ansible_host }}{% endfor %}"
+          - ""
+          - "Database Servers:"
+          - "{% for host in groups['dbservers'] %}  - {{ host }}: {{ hostvars[host].ansible_host }}{% endfor %}"
+          - ""
+          - "Monitoring:"
+          - "  - Prometheus: http://{{ hostvars[groups['monitoring'][0]].ansible_host }}:9090"
+          - "  - Grafana: http://{{ hostvars[groups['monitoring'][0]].ansible_host }}:3001"
+          - "    Default login: admin/admin"
+          - ""
+          - "Next steps:"
+          - "  1. Update inventory files with your actual Scaleway IPs"
+          - "  2. Update group_vars/all.yml with your app repository"
+          - "  3. Update group_vars/webservers.yml with your domain"
+          - "  4. Update group_vars/dbservers.yml with secure passwords"
+          - "  5. Run: ansible-playbook playbooks/deploy.yml -i inventory/dev"

@@ -1,0 +1,36 @@
+---
+# Variables specific to database servers
+
+# PostgreSQL Configuration
+postgresql_version: "15"
+postgresql_encoding: "UTF-8"
+postgresql_locale: "en_US.UTF-8"
+postgresql_ctype: "en_US.UTF-8"
+
+postgresql_listen_addresses: "*"
+postgresql_port: 5432
+
+# Database Configuration
+postgresql_databases:
+  - name: "{{ app_name }}_{{ environment }}"
+    encoding: "UTF-8"
+    lc_collate: "en_US.UTF-8"
+    lc_ctype: "en_US.UTF-8"
+
+postgresql_users:
+  - name: "{{ app_name }}_user"
+    password: "changeme_secure_password"  # Change this!
+    db: "{{ app_name }}_{{ environment }}"
+    priv: "ALL"
+
+# PostgreSQL Performance Tuning
+postgresql_shared_buffers: "256MB"
+postgresql_effective_cache_size: "1GB"
+postgresql_maintenance_work_mem: "64MB"
+postgresql_work_mem: "4MB"
+postgresql_max_connections: 100
+
+# Backup Configuration
+postgresql_backup_enabled: true
+postgresql_backup_hour: 2
+postgresql_backup_minute: 0

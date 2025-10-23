@@ -1,0 +1,51 @@
+---
+- name: Update application
+  hosts: webservers
+  become: yes
+  serial: 1
+
+  tasks:
+    - name: Pull latest code
+      git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_current_dir }}"
+        version: "{{ app_branch }}"
+        update: yes
+      become: yes
+      become_user: "{{ deploy_user }}"
+
+    - name: Install/update dependencies
+      npm:
+        path: "{{ app_current_dir }}"
+        production: yes
+        state: latest
+      become: yes
+      become_user: "{{ deploy_user }}"
+
+    - name: Build application
+      shell: npm run build
+      args:
+        chdir: "{{ app_current_dir }}"
+      become: yes
+      become_user: "{{ deploy_user }}"
+      when: "'build' in lookup('file', app_current_dir + '/package.json')"
+      ignore_errors: yes
+
+    - name: Reload PM2
+      shell: pm2 reload {{ pm2_app_name }}
+      become: yes
+      become_user: "{{ deploy_user }}"
+
+    - name: Wait for application
+      wait_for:
+        port: "{{ app_port }}"
+        delay: 3
+        timeout: 30
+
+    - name: Health check
+      uri:
+        url: "http://localhost:{{ app_port }}/health"
+        status_code: 200
+      retries: 3
+      delay: 5
+      ignore_errors: yes

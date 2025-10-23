@@ -1,0 +1,118 @@
+---
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+
+- name: Configure UFW defaults
+  ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: 'incoming', policy: 'deny' }
+    - { direction: 'outgoing', policy: 'allow' }
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+
+- name: Allow HTTP
+  ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+  when: "'webservers' in group_names"
+
+- name: Allow HTTPS
+  ufw:
+    rule: allow
+    port: '443'
+    proto: tcp
+  when: "'webservers' in group_names"
+
+- name: Allow PostgreSQL from web servers
+  ufw:
+    rule: allow
+    port: '5432'
+    proto: tcp
+    from_ip: "{{ hostvars[item].ansible_host }}"
+  loop: "{{ groups['webservers'] }}"
+  when: "'dbservers' in group_names"
+
+- name: Allow Prometheus from monitoring server
+  ufw:
+    rule: allow
+    port: '9090'
+    proto: tcp
+    from_ip: "{{ hostvars[groups['monitoring'][0]].ansible_host }}"
+  when: "'monitoring' in group_names"
+
+- name: Allow Node Exporter
+  ufw:
+    rule: allow
+    port: '9100'
+    proto: tcp
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+- name: Install fail2ban
+  apt:
+    name: fail2ban
+    state: present
+
+- name: Configure fail2ban local jail
+  template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+
+- name: Ensure fail2ban is enabled and started
+  systemd:
+    name: fail2ban
+    enabled: yes
+    state: started
+
+- name: Configure SSH - disable root login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+    - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+    - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
+    - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
+  notify: restart sshd
+
+- name: Install unattended-upgrades
+  apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+
+- name: Configure unattended-upgrades
+  template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable automatic updates
+  lineinfile:
+    path: /etc/apt/apt.conf.d/20auto-upgrades
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - 'APT::Periodic::Update-Package-Lists "1";'
+    - 'APT::Periodic::Unattended-Upgrade "1";'
+    - 'APT::Periodic::AutocleanInterval "7";'

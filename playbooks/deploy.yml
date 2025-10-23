@@ -1,0 +1,29 @@
+---
+- name: Deploy application
+  hosts: webservers
+  become: yes
+  serial: 1  # Deploy one server at a time
+
+  pre_tasks:
+    - name: Check if application directory exists
+      stat:
+        path: "{{ app_dir }}"
+      register: app_dir_stat
+
+    - name: Fail if not provisioned
+      fail:
+        msg: "Server not provisioned. Run provision.yml first!"
+      when: not app_dir_stat.stat.exists
+
+  roles:
+    - deploy-app
+
+  post_tasks:
+    - name: Health check
+      uri:
+        url: "http://localhost:{{ app_port }}/health"
+        status_code: 200
+      retries: 3
+      delay: 5
+      when: app_port is defined
+      ignore_errors: yes

@@ -1,0 +1,48 @@
+---
+- name: Rollback to previous release
+  hosts: webservers
+  become: yes
+  serial: 1
+
+  tasks:
+    - name: Get current release
+      stat:
+        path: "{{ app_current_dir }}"
+      register: current_link
+
+    - name: Find previous release
+      shell: "ls -1t {{ app_releases_dir }} | sed -n 2p"
+      register: previous_release
+
+    - name: Fail if no previous release
+      fail:
+        msg: "No previous release found to rollback to"
+      when: previous_release.stdout == ""
+
+    - name: Update symlink to previous release
+      file:
+        src: "{{ app_releases_dir }}/{{ previous_release.stdout }}"
+        dest: "{{ app_current_dir }}"
+        state: link
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        force: yes
+
+    - name: Reload PM2 with previous release
+      shell: |
+        cd {{ app_current_dir }}
+        pm2 reload ecosystem.config.js
+      become: yes
+      become_user: "{{ deploy_user }}"
+
+    - name: Wait for application
+      wait_for:
+        port: "{{ app_port }}"
+        delay: 3
+        timeout: 30
+
+    - name: Display rollback info
+      debug:
+        msg:
+          - "Rolled back to: {{ previous_release.stdout }}"
+          - "Previous current: {{ current_link.stat.lnk_target | basename }}"

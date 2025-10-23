@@ -1,0 +1,40 @@
+---
+# Global variables for all hosts
+
+# Deploy user configuration
+deploy_user: deploy
+deploy_user_groups:
+  - sudo
+  - www-data
+
+# SSH Configuration
+ssh_port: 22
+ssh_key_path: "~/.ssh/id_rsa.pub"  # Your public SSH key
+
+# Node.js Configuration
+nodejs_version: "20"  # LTS version
+
+# Application Configuration
+app_name: myapp
+app_port: 3000
+app_repo: "https://github.com/yourusername/yourapp.git"  # Replace with your repo
+app_branch: "{{ 'main' if environment == 'production' else 'develop' }}"
+app_dir: "/var/www/{{ app_name }}"
+app_releases_dir: "{{ app_dir }}/releases"
+app_current_dir: "{{ app_dir }}/current"
+app_shared_dir: "{{ app_dir }}/shared"
+
+# PM2 Configuration
+pm2_app_name: "{{ app_name }}"
+pm2_instances: 2
+pm2_max_memory: "512M"
+
+# Environment
+environment: "{{ 'production' if inventory_dir | regex_search('production') else 'dev' }}"
+
+# Timezone
+timezone: "Europe/Paris"
+
+# Backup Configuration
+backup_dir: "/var/backups"
+backup_retention_days: 7

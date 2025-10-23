@@ -1,0 +1,18 @@
+---
+# Variables specific to web servers
+
+# Nginx Configuration
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+nginx_client_max_body_size: "20M"
+
+# SSL Configuration (Let's Encrypt)
+ssl_enabled: true
+ssl_certbot_email: "admin@example.com"  # Replace with your email
+ssl_domains:
+  - "{{ app_name }}.example.com"  # Replace with your domain
+
+# Node.js environment variables
+node_env: "{{ environment }}"
+node_options: "--max-old-space-size=2048"
