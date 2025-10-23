@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Web Server 1
+  web-01:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    container_name: ansible-web-01
+    hostname: web-01
+    networks:
+      ansible_net:
+        ipv4_address: 172.28.0.11
+    ports:
+      - "2201:22"
+      - "8001:80"
+      - "8091:3000"
+    volumes:
+      - web01_data:/var/www
+    privileged: true
+    restart: unless-stopped
+
+  # Web Server 2
+  web-02:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    container_name: ansible-web-02
+    hostname: web-02
+    networks:
+      ansible_net:
+        ipv4_address: 172.28.0.12
+    ports:
+      - "2202:22"
+      - "8002:80"
+      - "8092:3000"
+    volumes:
+      - web02_data:/var/www
+    privileged: true
+    restart: unless-stopped
+
+  # Database Server
+  db-01:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    container_name: ansible-db-01
+    hostname: db-01
+    networks:
+      ansible_net:
+        ipv4_address: 172.28.0.21
+    ports:
+      - "2203:22"
+      - "5432:5432"
+    volumes:
+      - db01_data:/var/lib/postgresql
+    privileged: true
+    restart: unless-stopped
+
+  # Monitoring Server (optional, uses web-01)
+  # monitoring:
+  #   Same as web-01 but with additional ports for Prometheus/Grafana
+
+networks:
+  ansible_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  web01_data:
+  web02_data:
+  db01_data:
