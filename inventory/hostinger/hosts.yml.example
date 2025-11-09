@@ -1,0 +1,20 @@
+---
+all:
+  children:
+    webservers:
+      hosts:
+        hostinger-web-01:
+          ansible_host: 72.61.146.126
+          ansible_user: root  # Hostinger typically uses root, adjust if different
+          ansible_python_interpreter: /usr/bin/python3
+    
+    dbservers:
+      hosts:
+        hostinger-db-01:
+          ansible_host: 72.61.146.126  # Same server for DB
+          ansible_user: root
+          ansible_python_interpreter: /usr/bin/python3
+    
+    monitoring:
+      hosts:
+        hostinger-web-01:  # Monitor on same server
