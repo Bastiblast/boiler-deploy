@@ -384,7 +384,9 @@ setup_environment() {
         echo "  3) Exit"
         echo
         
-        local choice=$(ask "Choice" "1")
+        echo -ne "${BOLD}?${NC} Choice ${DIM}[1]${NC}: "
+        read -r choice
+        choice="${choice:-1}"
         
         case "$choice" in
             1)
@@ -405,7 +407,9 @@ setup_environment() {
                 done
                 echo
                 
-                local env_choice=$(ask "Choice" "1")
+                echo -ne "${BOLD}?${NC} Choice ${DIM}[1]${NC}: "
+                read -r env_choice
+                env_choice="${env_choice:-1}"
                 ENVIRONMENT="${existing_envs[$((env_choice-1))]}"
                 
                 print_info "Adding servers to: $ENVIRONMENT"
@@ -457,12 +461,71 @@ load_existing_environment() {
     ENABLE_MONITORING=false
 }
 
+select_services() {
+    print_header "Service Selection"
+    
+    echo "Which services would you like to create?"
+    echo
+    
+    if ask_yes_no "Create web server(s)?" "y"; then
+        ENABLE_WEB=true
+    else
+        ENABLE_WEB=false
+    fi
+    
+    if ask_yes_no "Create database server?" "y"; then
+        ENABLE_DB=true
+    else
+        ENABLE_DB=false
+    fi
+    
+    if ask_yes_no "Create monitoring server?" "y"; then
+        ENABLE_MONITORING=true
+    else
+        ENABLE_MONITORING=false
+    fi
+    
+    echo
+    print_info "Selected services:"
+    [[ "$ENABLE_WEB" == "true" ]] && echo "  • Web servers"
+    [[ "$ENABLE_DB" == "true" ]] && echo "  • Database server"
+    [[ "$ENABLE_MONITORING" == "true" ]] && echo "  • Monitoring server"
+    echo
+}
+
 ##############################################################################
 # Phase 3: SSH Key Configuration
 ##############################################################################
 
 configure_ssh_keys() {
     print_header "Phase 3/7: SSH Key Configuration"
+    
+    # If adding to existing environment, check if we should use existing key
+    if [[ "$MODE" == "add" ]]; then
+        local existing_key="${CONFIG[inventory_dir]}/group_vars/all.yml"
+        if [[ -f "$existing_key" ]]; then
+            local saved_key=$(grep "ansible_ssh_private_key_file:" "$existing_key" 2>/dev/null | awk '{print $2}' | tr -d '"')
+            if [[ -n "$saved_key" && -f "$saved_key" ]]; then
+                print_info "Found existing SSH key: $saved_key"
+                if ask_yes_no "Use this existing SSH key for new servers?" "y"; then
+                    CONFIG[ssh_private_key]="$saved_key"
+                    CONFIG[ssh_public_key]="${saved_key}.pub"
+                    print_success "Using existing SSH key"
+                    
+                    print_info "Public key to add to your new VPS:"
+                    echo
+                    cat "${CONFIG[ssh_public_key]}"
+                    echo
+                    
+                    if ! ask_yes_no "Have you added this key to your new VPS?" "n"; then
+                        print_warning "Add the key to your VPS and run again"
+                        exit 1
+                    fi
+                    return
+                fi
+            fi
+        fi
+    fi
     
     if ask_yes_no "Do you already have an SSH key to use?" "y"; then
         local key_path=$(ask "Path to SSH private key" "~/.ssh/id_rsa")
@@ -637,7 +700,9 @@ configure_database() {
         done
         echo
         
-        local choice=$(ask "Choice" "1")
+        echo -ne "${BOLD}?${NC} Choice ${DIM}[1]${NC}: " >&2
+        read -r choice </dev/tty
+        choice="${choice:-1}"
         IFS='|' read -r name ip port hostname <<< "${WEB_SERVERS[$((choice-1))]}"
         
         DB_SERVER[name]="$name"
@@ -715,7 +780,9 @@ configure_monitoring() {
     echo "  $((${#all_servers[@]}+1))) Use a new dedicated server"
     echo
     
-    local choice=$(ask "Choice" "1")
+    echo -ne "${BOLD}?${NC} Choice ${DIM}[1]${NC}: " >&2
+    read -r choice </dev/tty
+    choice="${choice:-1}"
     
     if ((choice > ${#all_servers[@]})); then
         # New dedicated server
@@ -846,7 +913,9 @@ test_all_connections() {
         echo "  3) Cancel setup"
         echo
         
-        local choice=$(ask "Choice" "1")
+        echo -ne "${BOLD}?${NC} Choice ${DIM}[1]${NC}: " >&2
+        read -r choice </dev/tty
+        choice="${choice:-1}"
         
         case "$choice" in
             1)
@@ -1257,6 +1326,11 @@ main() {
         if [[ "$RESUME_MODE" == true && -f "$STATE_FILE" ]]; then
             load_state "$STATE_FILE"
         fi
+    fi
+    
+    # Select services (only in create mode)
+    if [[ "$MODE" == "create" ]]; then
+        select_services
     fi
     
     # Phase 3: SSH Keys
