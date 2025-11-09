@@ -18,11 +18,11 @@ echo -e "${BLUE}  Déploiement Hostinger - IP: 72.61.146.126${NC}"
 echo -e "${BLUE}========================================${NC}"
 
 # Vérifier si le fichier d'inventaire existe
-if [ ! -f "$INVENTORY" ]; then
+if [ ! -f "$INVENTORY/hosts.yml" ]; then
     echo -e "${YELLOW}⚠️  Le fichier d'inventaire n'existe pas.${NC}"
     echo "Création depuis le template..."
-    cp inventory/hostinger/hosts.yml.example $INVENTORY
-    echo -e "${GREEN}✓ Fichier créé : $INVENTORY${NC}"
+    cp $INVENTORY/hosts.yml.example $INVENTORY/hosts.yml
+    echo -e "${GREEN}✓ Fichier créé : $INVENTORY/hosts.yml${NC}"
     echo "Veuillez le vérifier et ajuster si nécessaire."
 fi
 
