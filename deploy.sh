@@ -16,10 +16,10 @@ NC='\033[0m' # No Color
 
 # Parse arguments - syntax: ./deploy.sh ACTION ENVIRONMENT
 ACTION=${1:-deploy}
-ENVIRONMENT=${2:-production}
+ENVIRONMENT=${2:-hostinger}
 
-# Available environments
-VALID_ENVS="dev production hostinger"
+# Available environments (auto-detected from inventory directory)
+VALID_ENVS=$(ls -d inventory/*/ 2>/dev/null | xargs -n 1 basename | tr '\n' ' ')
 
 #==============================================================================
 # Helper Functions
@@ -62,16 +62,15 @@ ACTIONS:
   status      - Show PM2 services status
 
 ENVIRONMENTS:
-  production  - Production environment (default)
-  hostinger   - Hostinger VPS environment
-  dev         - Development environment
+  Available: $VALID_ENVS
+  Default: hostinger
 
 EXAMPLES:
-  $0 provision production    # First-time server setup
-  $0 deploy                  # Deploy to production (default)
-  $0 deploy hostinger        # Deploy to hostinger
-  $0 update production       # Quick update
-  $0 status hostinger        # Check PM2 status
+  $0 provision hostinger     # First-time server setup
+  $0 deploy                  # Deploy to hostinger (default)
+  $0 deploy dev              # Deploy to dev
+  $0 update hostinger        # Quick update
+  $0 status dev              # Check PM2 status
 
 For SSL configuration: ./configure-ssl.sh
 For health check: ./health_check.sh [environment]
