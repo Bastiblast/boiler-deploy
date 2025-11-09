@@ -42,9 +42,9 @@ ssh-copy-id root@72.61.146.126
 Éditez `group_vars/all.yml` et changez au minimum :
 
 ```yaml
-app_name: votre-nom-app          # Nom de votre application
+app_name: portefolio        # Nom de votre application
 app_port: 3000                   # Port de votre app Node.js
-app_repo: "https://github.com/votre-user/votre-repo.git"  # Votre repo GitHub
+app_repo: "https://github.com/Bastiblast/portefolio.git"  # Votre repo GitHub
 ```
 
 Éditez `group_vars/dbservers.yml` pour le mot de passe de la base de données :
