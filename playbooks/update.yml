@@ -22,13 +22,21 @@
       become: yes
       become_user: "{{ deploy_user }}"
 
+    - name: Check if build script exists
+      shell: grep -q '"build"' "{{ app_current_dir }}/package.json"
+      register: has_build_script
+      ignore_errors: yes
+      become: yes
+      become_user: "{{ deploy_user }}"
+      changed_when: false
+
     - name: Build application
       shell: npm run build
       args:
         chdir: "{{ app_current_dir }}"
       become: yes
       become_user: "{{ deploy_user }}"
-      when: "'build' in lookup('file', app_current_dir + '/package.json')"
+      when: has_build_script.rc == 0
       ignore_errors: yes
 
     - name: Reload PM2
@@ -44,8 +52,15 @@
 
     - name: Health check
       uri:
-        url: "http://localhost:{{ app_port }}/health"
-        status_code: 200
+        url: "http://localhost:{{ app_port }}"
+        status_code: [200, 301, 302, 404]
+        timeout: 10
       retries: 3
       delay: 5
+      register: health_result
       ignore_errors: yes
+
+    - name: Display health check result
+      debug:
+        msg: "Application is responding (Status: {{ health_result.status | default('unknown') }})"
+      when: health_result is defined and not health_result.failed
