@@ -1,394 +1,219 @@
-# Ansible Deployment for Node.js Applications on Scaleway
+# Ansible Deployment for Node.js Applications
 
-Complete Ansible setup for deploying and managing Node.js applications with PostgreSQL on Scaleway VPS instances running Debian.
+🚀 Universal deployment system for Node.js applications on any VPS provider with intelligent auto-detection, zero-downtime deployments, and built-in monitoring.
 
-## 🚀 Features
+## ✨ Features
 
-- **Full server provisioning** on Scaleway VPS (Debian)
-- **Security hardening**: UFW firewall, fail2ban, SSH hardening, auto-updates
-- **PostgreSQL** database setup with backups
-- **Node.js** with PM2 process manager
-- **Nginx** reverse proxy with Let's Encrypt SSL
-- **Monitoring**: Prometheus + Grafana + Node Exporter
-- **Zero-downtime deployments** with rollback capability
-- **Multi-environment** support (dev, production)
+- **🤖 Auto-Detection**: Automatically detects Next.js, Nuxt.js, Express, Fastify, NestJS, and vanilla Node.js applications
+- **📦 Multi Package Manager**: Supports npm, pnpm, and yarn with automatic detection
+- **🔄 Zero-Downtime Deployments**: Rolling deployments with automatic rollback on failure
+- **📊 Built-in Monitoring**: Prometheus + Grafana + Node Exporter pre-configured
+- **🔒 Security Hardening**: UFW firewall, fail2ban, SSH key authentication, and automated security updates
+- **⚡ One-Command Deployment**: Simple CLI for provisioning and deploying
+- **🎯 PM2 Process Management**: Automatic PM2 configuration optimized per framework
+- **🔧 Smart Build System**: Detects build requirements and runs them automatically
 
-## 📋 Prerequisites
+## 🎯 Supported Technologies
 
-- Ansible 2.9+ installed on your local machine
-- Scaleway VPS instances (Debian 11/12)
-- SSH access to servers (password or key)
-- Domain name (optional, for SSL certificates)
-- GitHub repository with your Node.js application
+### Frameworks
+- **Next.js** (auto-detected, optimized PM2 config)
+- **Nuxt.js** (auto-detected, optimized PM2 config)
+- **Express** (auto-detected)
+- **Fastify** (auto-detected)
+- **NestJS** (auto-detected)
+- **Node.js** (standard applications)
 
-## 🛠️ Installation
+### Package Managers
+- **pnpm** (auto-detected via pnpm-lock.yaml)
+- **yarn** (auto-detected via yarn.lock)
+- **npm** (auto-detected via package-lock.json)
 
-### 1. Install Ansible
+### VPS Providers
+Works with any VPS provider:
+- DigitalOcean
+- Vultr
+- Linode
+- OVH
+- Hetzner
+- And any other VPS with SSH access
+
+### Operating Systems
+- Debian 12 (Bookworm)
+- Debian 13 (Trixie) ✅ Tested
+- Ubuntu 20.04 LTS
+- Ubuntu 22.04 LTS
+
+## 🚀 Quick Start
+
+Get your application deployed in 10 minutes. See the [Quick Start Guide](QUICKSTART.md) for detailed instructions.
 
 ```bash
-# On Ubuntu/Debian
-sudo apt update
-sudo apt install ansible
-
-# On macOS
-brew install ansible
-
-# Verify installation
-ansible --version
-```
-
-### 2. Install required Ansible collections
-
-```bash
+# 1. Install dependencies
 ansible-galaxy collection install -r requirements.yml
+
+# 2. Configure your VPS
+cp inventory/production/hosts.yml.example inventory/production/hosts.yml
+# Edit with your VPS IP and settings
+
+# 3. Set your application details
+cp group_vars/all.yml.example group_vars/all.yml
+# Edit with your Git repository and configuration
+
+# 4. Deploy
+./deploy.sh provision  # First time: install all services
+./deploy.sh deploy     # Deploy your application
 ```
 
-### 3. Generate SSH key (if you don't have one)
+## 📚 Documentation
 
-```bash
-ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 10 minutes
+- **[Configuration Guide](docs/CONFIGURATION.md)** - Complete configuration reference
+- **[Auto-Detection System](docs/AUTO_DETECTION.md)** - How the auto-detection works
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Examples](docs/EXAMPLES.md)** - Real-world application examples
+- **[Changelog](docs/CHANGELOG.md)** - Version history and changes
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Your VPS Server                   │
+├─────────────────────────────────────────────────────┤
+│  Nginx (Reverse Proxy)                              │
+│    ↓                                                 │
+│  PM2 (Process Manager)                              │
+│    ↓                                                 │
+│  Your Node.js App (Auto-detected & Configured)      │
+├─────────────────────────────────────────────────────┤
+│  PostgreSQL 15 (Database)                           │
+│  Prometheus (Metrics Collection)                    │
+│  Grafana (Visualization)                            │
+│  Node Exporter (System Metrics)                     │
+├─────────────────────────────────────────────────────┤
+│  Security: UFW + fail2ban + SSH hardening          │
+└─────────────────────────────────────────────────────┘
 ```
 
-## ⚙️ Configuration
+## 🔧 What Gets Installed
 
-### 1. Update Inventory Files
+**Web Stack:**
+- Nginx (reverse proxy)
+- Node.js 20 LTS
+- PM2 (process manager)
 
-Edit `inventory/dev/hosts.yml` and `inventory/production/hosts.yml` with your Scaleway server IPs:
+**Database:**
+- PostgreSQL 15
 
-```yaml
-webservers:
-  hosts:
-    prod-web-01:
-      ansible_host: YOUR_SCALEWAY_IP_1
-    prod-web-02:
-      ansible_host: YOUR_SCALEWAY_IP_2
+**Monitoring:**
+- Prometheus (metrics)
+- Grafana (dashboards)
+- Node Exporter (system metrics)
 
-dbservers:
-  hosts:
-    prod-db-01:
-      ansible_host: YOUR_SCALEWAY_IP_3
-```
+**Security:**
+- UFW (firewall)
+- fail2ban (intrusion prevention)
+- Automated security updates
+- SSH hardening (key-only auth, no root login)
 
-### 2. Configure Variables
+## 🎯 How It Works
 
-#### `group_vars/all.yml`
-- Update `app_repo` with your GitHub repository URL
-- Set `app_name` to your application name
-- Update `ssh_key_path` to your public SSH key location
+1. **Auto-Detection**: The system reads your `package.json` to detect:
+   - Framework type (Next.js, Express, etc.)
+   - Package manager (pnpm, yarn, npm)
+   - Build requirements
+   - Entry point
 
-#### `group_vars/webservers.yml`
-- Set `ssl_certbot_email` to your email
-- Update `ssl_domains` with your domain name
+2. **Smart Installation**: Installs dependencies using the correct package manager:
+   - Full dependencies for Next.js/Nuxt.js (build needed)
+   - Production-only for other frameworks
 
-#### `group_vars/dbservers.yml`
-- Change `postgresql_users[].password` to a secure password
-- Adjust PostgreSQL performance settings based on server resources
+3. **Optimized PM2 Config**: Generates PM2 configuration based on framework:
+   - Fork mode for Next.js/Nuxt.js (framework handles scaling)
+   - Cluster mode for Express/Fastify/NestJS
 
-### 3. First-time Setup on Scaleway
-
-If your servers are brand new and require password authentication initially:
-
-```bash
-# Copy your SSH key to the servers
-ssh-copy-id debian@YOUR_SERVER_IP
-
-# Or use ansible to do this
-ansible all -i inventory/dev -m authorized_key \
-  -a "user=debian key='{{ lookup('file', '~/.ssh/id_rsa.pub') }}' state=present" \
-  --ask-pass
-```
-
-## 🚢 Deployment
-
-### Full Provisioning (First Time)
-
-This sets up everything: users, security, PostgreSQL, Node.js, Nginx, monitoring.
-
-```bash
-# For development environment
-ansible-playbook playbooks/provision.yml -i inventory/dev
-
-# For production environment
-ansible-playbook playbooks/provision.yml -i inventory/production
-```
-
-### Deploy Application
-
-```bash
-# Development
-ansible-playbook playbooks/deploy.yml -i inventory/dev
-
-# Production
-ansible-playbook playbooks/deploy.yml -i inventory/production
-```
-
-### Update Application
-
-Quick update without full deployment (pulls latest code, updates dependencies):
-
-```bash
-ansible-playbook playbooks/update.yml -i inventory/production
-```
-
-### Rollback
-
-If something goes wrong, rollback to the previous release:
-
-```bash
-ansible-playbook playbooks/rollback.yml -i inventory/production
-```
+4. **Zero-Downtime Deploy**: 
+   - Keeps last 5 releases
+   - Symlink swap for instant rollback
+   - Health checks before switching
 
 ## 📊 Monitoring
 
-After provisioning, access monitoring tools:
+Access your monitoring dashboards:
 
-### Prometheus
-```
-http://YOUR_MONITORING_SERVER_IP:9090
-```
+- **Prometheus**: `http://your-vps-ip:9090`
+- **Grafana**: `http://your-vps-ip:3001` (default: admin/admin)
+- **Node Exporter**: `http://your-vps-ip:9100`
 
-### Grafana
-```
-http://YOUR_MONITORING_SERVER_IP:3001
-Default credentials: admin / admin
-```
+## 🔐 Security
 
-### Node Exporter Metrics
-```
-http://ANY_SERVER_IP:9100/metrics
-```
+Security is enabled by default:
 
-## 🔐 Security Features
+- **Firewall (UFW)**: Only necessary ports open
+- **fail2ban**: Automatic IP ban after failed login attempts
+- **SSH Hardening**: 
+  - Key-only authentication
+  - Root login disabled
+  - Deploy user with sudo access
+- **Automated Updates**: Security patches applied automatically
 
-- **UFW Firewall**: Configured to allow only necessary ports
-- **fail2ban**: Protects against brute-force attacks
-- **SSH Hardening**: Root login disabled, password auth disabled
-- **Automatic Security Updates**: Enabled via unattended-upgrades
-- **Deploy User**: Separate user for deployments with sudo access
+## 🛠️ Commands
 
-## 📂 Project Structure
-
-```
-.
-├── ansible.cfg                 # Ansible configuration
-├── requirements.yml            # Required collections
-├── inventory/
-│   ├── dev/hosts.yml          # Development servers
-│   └── production/hosts.yml   # Production servers
-├── group_vars/
-│   ├── all.yml                # Global variables
-│   ├── webservers.yml         # Web server variables
-│   └── dbservers.yml          # Database variables
-├── roles/
-│   ├── common/                # Base setup (users, packages)
-│   ├── security/              # UFW, fail2ban, SSH hardening
-│   ├── postgresql/            # PostgreSQL setup
-│   ├── nodejs/                # Node.js and PM2
-│   ├── nginx/                 # Nginx and SSL
-│   ├── monitoring/            # Prometheus + Grafana
-│   └── deploy-app/            # Application deployment
-└── playbooks/
-    ├── provision.yml          # Full server provisioning
-    ├── deploy.yml             # Deploy application
-    ├── update.yml             # Quick update
-    └── rollback.yml           # Rollback to previous release
-```
-
-## 🔧 Useful Commands
-
-### Check connectivity
 ```bash
-ansible all -i inventory/production -m ping
+# Provisioning (first time setup)
+./deploy.sh provision
+
+# Deploy application
+./deploy.sh deploy
+
+# Quick update (skip provisioning)
+./deploy.sh update
+
+# Rollback to previous version
+./deploy.sh rollback
+
+# Check application status
+./deploy.sh status
+
+# View logs
+ssh deploy@your-vps-ip 'pm2 logs'
 ```
 
-### Run specific role
-```bash
-ansible-playbook playbooks/provision.yml -i inventory/dev --tags "security"
+## 📦 Project Structure
+
 ```
-
-### Check playbook syntax
-```bash
-ansible-playbook playbooks/deploy.yml --syntax-check
+boiler-deploy/
+├── playbooks/          # Ansible playbooks
+├── roles/              # Ansible roles
+│   ├── common/         # Base system setup
+│   ├── postgresql/     # Database
+│   ├── nodejs/         # Node.js + PM2
+│   ├── nginx/          # Reverse proxy
+│   ├── monitoring/     # Prometheus + Grafana
+│   ├── security/       # Firewall + fail2ban
+│   └── deploy-app/     # Application deployment
+├── inventory/          # Server configurations
+├── group_vars/         # Configuration variables
+└── deploy.sh           # Deployment script
 ```
-
-### Dry run (check mode)
-```bash
-ansible-playbook playbooks/deploy.yml -i inventory/dev --check
-```
-
-### View PM2 logs on server
-```bash
-ssh deploy@YOUR_SERVER_IP
-pm2 logs
-pm2 status
-```
-
-### Database backup
-Backups are automatically created daily at 2 AM. To manually trigger:
-```bash
-ssh deploy@YOUR_DB_SERVER_IP
-sudo -u postgres /usr/local/bin/backup_postgres.sh
-```
-
-## 🐛 Troubleshooting
-
-### Connection issues
-```bash
-# Test SSH connection
-ssh -v debian@YOUR_SERVER_IP
-
-# Check inventory
-ansible-inventory -i inventory/dev --list
-```
-
-### Application not starting
-```bash
-# Check PM2 status
-ssh deploy@YOUR_SERVER_IP
-pm2 status
-pm2 logs
-
-# Check Nginx
-sudo systemctl status nginx
-sudo nginx -t
-```
-
-### Database connection issues
-```bash
-# Check PostgreSQL
-sudo systemctl status postgresql
-sudo -u postgres psql -c "\l"
-
-# Test connection from web server
-psql -h DB_SERVER_IP -U myapp_user -d myapp_production
-```
-
-## 📝 Application Requirements
-
-Your Node.js application should:
-
-1. **Have a main entry file** (index.js, app.js, or server.js)
-2. **Listen on the port** specified in environment variable `PORT`
-3. **Include a health endpoint** (optional but recommended): `GET /health`
-4. **Use environment variables** from `.env` file
-
-Example minimal app:
-```javascript
-const express = require('express');
-const app = express();
-const port = process.env.PORT || 3000;
-
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
-```
-
-## 🔄 Update Process
-
-The deployment uses a releases directory structure:
-```
-/var/www/myapp/
-├── current -> releases/20250123_143000_abc1234
-├── releases/
-│   ├── 20250123_143000_abc1234/
-│   ├── 20250122_120000_def5678/
-│   └── ...
-└── shared/
-    ├── logs/
-    └── config/.env
-```
-
-This allows:
-- Quick rollbacks
-- Zero-downtime deployments
-- Shared configuration between releases
-
-## 📚 Additional Resources
-
-- [Ansible Documentation](https://docs.ansible.com/)
-- [PM2 Documentation](https://pm2.keymetrics.io/)
-- [Nginx Documentation](https://nginx.org/en/docs/)
-- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
-- [Prometheus Documentation](https://prometheus.io/docs/)
-- [Grafana Documentation](https://grafana.com/docs/)
 
 ## 🤝 Contributing
 
-Feel free to submit issues or pull requests for improvements!
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-MIT License - feel free to use this for your projects!
+MIT License - see LICENSE file for details
 
-## 🔒 Version Control & Security
+## 🆘 Support
 
-### Git Setup
+- **Issues**: [GitHub Issues](https://github.com/yourusername/boiler-deploy/issues)
+- **Documentation**: [docs/](docs/)
+- **Examples**: [docs/EXAMPLES.md](docs/EXAMPLES.md)
 
-This project includes sensitive configuration files that should NOT be committed to Git:
-- `group_vars/all.yml` - Contains app repo URLs and settings
-- `group_vars/dbservers.yml` - Contains database passwords
-- `inventory/*/hosts.yml` - Contains server IPs
+## ⭐ Acknowledgments
 
-These files are in `.gitignore` for safety.
+Built with Ansible, tested on real VPS deployments, designed for simplicity and reliability.
 
-### Initial Git Setup
+---
 
-```bash
-# Initialize git repository
-git init
-
-# The .gitignore is already configured
-# Example files (.example.yml) can be safely committed
-
-# Add files
-git add .
-
-# Commit
-git commit -m "Initial Ansible deployment setup"
-
-# Add remote
-git remote add origin https://github.com/yourusername/your-ansible-repo.git
-
-# Push
-git push -u origin main
-```
-
-### Sharing Configuration Safely
-
-Use the `.example` files for sharing project structure:
-- `group_vars/all.yml.example`
-- `group_vars/dbservers.yml.example`
-- `inventory/dev/hosts.yml.example`
-
-Team members can copy these:
-```bash
-cp group_vars/all.yml.example group_vars/all.yml
-cp group_vars/dbservers.yml.example group_vars/dbservers.yml
-cp inventory/dev/hosts.yml.example inventory/dev/hosts.yml
-# Then update with real values
-```
-
-### Using Ansible Vault (Recommended)
-
-For production, use Ansible Vault to encrypt sensitive data:
-
-```bash
-# Encrypt sensitive files
-ansible-vault encrypt group_vars/dbservers.yml
-
-# Edit encrypted file
-ansible-vault edit group_vars/dbservers.yml
-
-# Run playbook with vault
-ansible-playbook playbooks/provision.yml -i inventory/production --ask-vault-pass
-
-# Or use password file
-echo "your-vault-password" > .vault-password
-chmod 600 .vault-password
-ansible-playbook playbooks/provision.yml -i inventory/production --vault-password-file .vault-password
-```
-
+**Ready to deploy?** Start with the [Quick Start Guide](QUICKSTART.md) →
