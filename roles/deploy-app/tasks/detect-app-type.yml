@@ -1,0 +1,114 @@
+---
+# Detect application type and set appropriate configuration
+
+- name: Check if package.json exists
+  stat:
+    path: "{{ release_path }}/package.json"
+  register: package_json_file
+
+- name: Read package.json content
+  slurp:
+    src: "{{ release_path }}/package.json"
+  register: package_json_content
+  when: package_json_file.stat.exists
+
+- name: Parse package.json
+  set_fact:
+    package_json: "{{ package_json_content.content | b64decode | from_json }}"
+  when: package_json_file.stat.exists
+
+- name: Detect application type (auto)
+  set_fact:
+    app_type_detected: >-
+      {%- if package_json is defined -%}
+        {%- if 'next' in (package_json.dependencies | default({})) or 'next' in (package_json.devDependencies | default({})) -%}
+          nextjs
+        {%- elif 'nuxt' in (package_json.dependencies | default({})) or 'nuxt' in (package_json.devDependencies | default({})) -%}
+          nuxtjs
+        {%- elif 'express' in (package_json.dependencies | default({})) -%}
+          express
+        {%- elif 'fastify' in (package_json.dependencies | default({})) -%}
+          fastify
+        {%- elif 'nest' in (package_json.dependencies | default({})) or '@nestjs/core' in (package_json.dependencies | default({})) -%}
+          nestjs
+        {%- else -%}
+          nodejs
+        {%- endif -%}
+      {%- else -%}
+        unknown
+      {%- endif -%}
+  when: package_json_file.stat.exists
+
+- name: Set final application type (override or detected)
+  set_fact:
+    app_type: "{{ app_type_override | default(app_type_detected | default('nodejs')) }}"
+
+- name: Detect package manager
+  set_fact:
+    package_manager: >-
+      {%- if lookup('first_found', [release_path + '/pnpm-lock.yaml'], errors='ignore') -%}
+        pnpm
+      {%- elif lookup('first_found', [release_path + '/yarn.lock'], errors='ignore') -%}
+        yarn
+      {%- elif lookup('first_found', [release_path + '/package-lock.json'], errors='ignore') -%}
+        npm
+      {%- else -%}
+        npm
+      {%- endif -%}
+
+- name: Check if pnpm-lock.yaml exists
+  stat:
+    path: "{{ release_path }}/pnpm-lock.yaml"
+  register: pnpm_lock
+
+- name: Check if yarn.lock exists
+  stat:
+    path: "{{ release_path }}/yarn.lock"
+  register: yarn_lock
+
+- name: Set package manager based on lock files (auto)
+  set_fact:
+    package_manager_detected: >-
+      {%- if pnpm_lock.stat.exists -%}
+        pnpm
+      {%- elif yarn_lock.stat.exists -%}
+        yarn
+      {%- else -%}
+        npm
+      {%- endif -%}
+
+- name: Set final package manager (override or detected)
+  set_fact:
+    package_manager: "{{ package_manager_override | default(package_manager_detected | default('npm')) }}"
+
+- name: Detect if build is needed
+  set_fact:
+    needs_build: "{{ 'build' in (package_json.scripts | default({})) }}"
+  when: package_json is defined
+
+- name: Detect main entry file (auto)
+  set_fact:
+    app_entry_file_detected: >-
+      {%- if package_json is defined and package_json.main is defined -%}
+        {{ package_json.main }}
+      {%- else -%}
+        {%- if lookup('first_found', [release_path + '/index.js', release_path + '/server.js', release_path + '/app.js', release_path + '/src/index.js', release_path + '/src/server.js', release_path + '/src/app.js'], errors='ignore') -%}
+          {{ lookup('first_found', [release_path + '/index.js', release_path + '/server.js', release_path + '/app.js', release_path + '/src/index.js', release_path + '/src/server.js', release_path + '/src/app.js'], errors='ignore') | basename }}
+        {%- else -%}
+          index.js
+        {%- endif -%}
+      {%- endif -%}
+  when: package_json is defined
+
+- name: Set final entry file (override or detected)
+  set_fact:
+    app_entry_file: "{{ app_entry_file_override | default(app_entry_file_detected | default('index.js')) }}"
+
+- name: Display detected configuration
+  debug:
+    msg:
+      - "Application Type: {{ app_type | default('unknown') }}"
+      - "Package Manager: {{ package_manager | default('npm') }}"
+      - "Needs Build: {{ needs_build | default(false) }}"
+      - "Entry File: {{ app_entry_file | default('N/A') }}"
+      - "Has package.json: {{ package_json_file.stat.exists }}"
