@@ -47,6 +47,7 @@ ENABLE_MONITORING=true
 # Configuration storage
 declare -A CONFIG
 declare -a WEB_SERVERS
+declare -a EXISTING_WEB_SERVERS
 declare -A DB_SERVER
 declare -A MONITORING_SERVER
 declare -a FAILED_CONNECTIONS
@@ -99,9 +100,9 @@ ask() {
     local result
     
     if [[ -n "$default" ]]; then
-        echo -ne "${BOLD}?${NC} ${prompt} ${DIM}[${default}]${NC}: "
+        echo -ne "${BOLD}?${NC} ${prompt} ${DIM}[${default}]${NC}: " >&2
     else
-        echo -ne "${BOLD}?${NC} ${prompt}: "
+        echo -ne "${BOLD}?${NC} ${prompt}: " >&2
     fi
     
     read -r result
@@ -114,9 +115,9 @@ ask_yes_no() {
     local result
     
     if [[ "$default" == "y" ]]; then
-        echo -ne "${BOLD}?${NC} ${prompt} ${DIM}[Y/n]${NC}: "
+        echo -ne "${BOLD}?${NC} ${prompt} ${DIM}[Y/n]${NC}: " >&2
     else
-        echo -ne "${BOLD}?${NC} ${prompt} ${DIM}[y/N]${NC}: "
+        echo -ne "${BOLD}?${NC} ${prompt} ${DIM}[y/N]${NC}: " >&2
     fi
     
     read -r result
@@ -234,7 +235,7 @@ test_ssh_connection() {
     local host="$2"
     local ssh_key="${3:-}"
     
-    local ssh_opts="-o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+    local ssh_opts="-o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o PasswordAuthentication=no -o PubkeyAuthentication=yes"
     
     if [[ -n "$ssh_key" ]]; then
         ssh_opts="$ssh_opts -i $ssh_key"
@@ -443,8 +444,24 @@ load_existing_environment() {
     
     print_header "Loading Environment: $env"
     
-    # Parse existing hosts (simplified - just count)
-    local web_count=$(grep -c "ansible_host:" "$hosts_file" 2>/dev/null || echo "0")
+    # Load existing web servers
+    EXISTING_WEB_SERVERS=()
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*([a-zA-Z0-9_-]+):$ ]]; then
+            local name="${BASH_REMATCH[1]}"
+            if [[ "$name" != "webservers" && "$name" != "dbservers" && "$name" != "monitoring" && "$name" != "hosts" && "$name" != "all" && "$name" != "children" ]]; then
+                local ip=$(awk "/^[[:space:]]*${name}:/,/^[[:space:]]*[a-zA-Z]/ {if (/ansible_host:/) print \$2}" "$hosts_file")
+                local user=$(awk "/^[[:space:]]*${name}:/,/^[[:space:]]*[a-zA-Z]/ {if (/ansible_user:/) print \$2}" "$hosts_file")
+                local port=$(awk "/^[[:space:]]*${name}:/,/^[[:space:]]*[a-zA-Z]/ {if (/app_port:/) print \$2}" "$hosts_file")
+                
+                if [[ -n "$ip" ]]; then
+                    EXISTING_WEB_SERVERS+=("${name}|${ip}|${port:-3000}|${name}")
+                fi
+            fi
+        fi
+    done < "$hosts_file"
+    
+    local web_count=${#EXISTING_WEB_SERVERS[@]}
     
     print_info "Current configuration:"
     echo "  • Web servers: $web_count"
@@ -528,21 +545,36 @@ configure_ssh_keys() {
     fi
     
     if ask_yes_no "Do you already have an SSH key to use?" "y"; then
-        local key_path=$(ask "Path to SSH private key" "~/.ssh/id_rsa")
-        key_path="${key_path/#\~/$HOME}"
+        local key_path
+        local key_valid=false
         
-        if [[ ! -f "$key_path" ]]; then
-            print_error "SSH key not found: $key_path"
-            exit 1
-        fi
+        while [[ "$key_valid" == "false" ]]; do
+            key_path=$(ask "Path to SSH private key" "~/.ssh/id_rsa")
+            key_path="${key_path/#\~/$HOME}"
+            
+            if [[ ! -f "$key_path" ]]; then
+                print_error "SSH key not found: $key_path"
+                echo
+                if ! ask_yes_no "Try another path?" "y"; then
+                    exit 1
+                fi
+                continue
+            fi
+            
+            if [[ ! -f "${key_path}.pub" ]]; then
+                print_error "Public key not found: ${key_path}.pub"
+                echo
+                if ! ask_yes_no "Try another path?" "y"; then
+                    exit 1
+                fi
+                continue
+            fi
+            
+            key_valid=true
+        done
         
         CONFIG[ssh_private_key]="$key_path"
         CONFIG[ssh_public_key]="${key_path}.pub"
-        
-        if [[ ! -f "${CONFIG[ssh_public_key]}" ]]; then
-            print_error "Public key not found: ${CONFIG[ssh_public_key]}"
-            exit 1
-        fi
         
         print_success "Using existing SSH key: $key_path"
     else
@@ -669,9 +701,19 @@ configure_web_servers() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    for ((i=0; i<${#WEB_SERVERS[@]}; i++)); do
-        IFS='|' read -r name ip port hostname <<< "${WEB_SERVERS[$i]}"
-        echo -e "  $((i+1)). $hostname → $ip:$port"
+    local count=1
+    # Show existing servers first
+    for server_data in "${EXISTING_WEB_SERVERS[@]}"; do
+        IFS='|' read -r name ip port hostname <<< "$server_data"
+        echo -e "  ${count}. $hostname → $ip:$port ${DIM}(existing)${NC}"
+        ((count++))
+    done
+    
+    # Show new servers
+    for server_data in "${WEB_SERVERS[@]}"; do
+        IFS='|' read -r name ip port hostname <<< "$server_data"
+        echo -e "  ${count}. $hostname → $ip:$port ${BOLD}(new)${NC}"
+        ((count++))
     done
     echo
     
@@ -807,7 +849,7 @@ configure_monitoring() {
     echo
     print_info "Services:"
     echo "  • Prometheus → http://${MONITORING_SERVER[ip]}:9090"
-    echo "  • Grafana    → http://${MONITORING_SERVER[ip]}:3001"
+    echo "  • Grafana    → http://${MONITORING_SERVER[ip]}:9080"
 }
 
 ##############################################################################
@@ -1013,7 +1055,22 @@ all:
       hosts:
 EOF
     
-    # Add web servers
+    # Add existing web servers first
+    for server_data in "${EXISTING_WEB_SERVERS[@]}"; do
+        IFS='|' read -r name ip port hostname <<< "$server_data"
+        
+        cat >> "$hosts_file" << EOF
+        ${name}:
+          ansible_host: ${ip}
+          ansible_user: ${CONFIG[web_ssh_user]}
+          ansible_python_interpreter: /usr/bin/python3
+          ansible_ssh_private_key_file: ${CONFIG[ssh_private_key]}
+          ansible_become: yes
+          app_port: ${port}
+EOF
+    done
+    
+    # Add new web servers
     for server_data in "${WEB_SERVERS[@]}"; do
         IFS='|' read -r name ip port hostname <<< "$server_data"
         
@@ -1070,6 +1127,13 @@ EOF
           - targets:
 EOF
         
+        # Add existing servers to monitoring
+        for server_data in "${EXISTING_WEB_SERVERS[@]}"; do
+            IFS='|' read -r _ ip _ _ <<< "$server_data"
+            echo "              - '${ip}:9100'" >> "$hosts_file"
+        done
+        
+        # Add new servers to monitoring
         for server_data in "${WEB_SERVERS[@]}"; do
             IFS='|' read -r _ ip _ _ <<< "$server_data"
             echo "              - '${ip}:9100'" >> "$hosts_file"
@@ -1234,7 +1298,7 @@ show_final_summary() {
         echo "Monitoring Server:"
         echo "  • ${MONITORING_SERVER[hostname]} → ${MONITORING_SERVER[ip]}"
         echo "  • Prometheus: http://${MONITORING_SERVER[ip]}:9090"
-        echo "  • Grafana: http://${MONITORING_SERVER[ip]}:3001"
+        echo "  • Grafana: http://${MONITORING_SERVER[ip]}:9080"
         echo
     fi
     
@@ -1261,9 +1325,12 @@ show_final_summary() {
     echo "4. Check application status:"
     echo "   ./deploy.sh status ${ENVIRONMENT}"
     echo
-    echo "5. View logs:"
-    echo "   ssh ${CONFIG[web_ssh_user]}@${WEB_SERVERS[0]#*|} 'pm2 logs'"
-    echo
+    if [[ ${#WEB_SERVERS[@]} -gt 0 ]]; then
+        IFS='|' read -r _ ip _ _ <<< "${WEB_SERVERS[0]}"
+        echo "5. View logs:"
+        echo "   ssh ${CONFIG[web_ssh_user]}@${ip} 'pm2 logs'"
+        echo
+    fi
     
     if [[ ${#FAILED_CONNECTIONS[@]} -gt 0 ]]; then
         print_warning "Note: Some servers had SSH connection issues"
