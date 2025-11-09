@@ -1,7 +1,8 @@
 module.exports = {
   apps: [{
     name: '{{ pm2_app_name }}',
-    script: './index.js',  // Adjust to your main file (app.js, server.js, etc.)
+    script: 'npm',
+    args: 'start',
     instances: {{ pm2_instances }},
     exec_mode: 'cluster',
     max_memory_restart: '{{ pm2_max_memory }}',
