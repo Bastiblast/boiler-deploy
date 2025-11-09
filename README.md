@@ -228,8 +228,7 @@ boiler-deploy/
 │   ├── security/       # Firewall + fail2ban
 │   └── deploy-app/     # Application deployment (with auto-detection)
 ├── inventory/          # Server configurations
-│   ├── production/     # Production environment
-│   ├── hostinger/      # Hostinger VPS environment
+│   ├── production/     # Production environment (default)
 │   └── dev/            # Development environment
 ├── group_vars/         # Configuration variables
 ├── docs/               # Documentation

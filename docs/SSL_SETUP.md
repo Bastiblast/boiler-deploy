@@ -76,13 +76,13 @@ TTL: 3600
 The script automatically detects:
 - Deployed applications
 - Server IP addresses
-- Current environments (production, hostinger, dev)
+- Current environments (production, dev)
 - Existing SSL configuration
 
 ```
 → Detecting deployed applications...
 ✓ Found application: myapp
-✓ Found server: 72.61.146.126 (hostinger)
+✓ Found server: 72.61.146.126 (production)
 ℹ SSL Status: Disabled
 ```
 
@@ -92,8 +92,8 @@ If multiple environments exist, you'll select which to configure:
 
 ```
 ? Select environment [1-2]: 1
-  1) hostinger - 72.61.146.126
-  2) production - 142.93.1.1
+  1) production - 72.61.146.126
+  2) dev - 142.93.1.1
 ```
 
 ### 3. Domain Configuration
@@ -174,7 +174,7 @@ Review all settings before applying:
 CONFIGURATION SUMMARY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Environment:     hostinger
+Environment:     production
 Server:          72.61.146.126
 Application:     myapp
 Domains:         myportfolio.com www.myportfolio.com

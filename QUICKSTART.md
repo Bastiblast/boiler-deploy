@@ -141,7 +141,7 @@ First-time setup installs all services (takes 5-10 minutes):
 
 **Note:** The script uses syntax `./deploy.sh ACTION [ENVIRONMENT]` where:
 - **ACTION**: provision, deploy, update, rollback, check, status
-- **ENVIRONMENT**: production (default), hostinger, dev
+- **ENVIRONMENT**: production (default), dev
 
 This installs:
 - ✅ Node.js 20 LTS
@@ -231,7 +231,7 @@ The unified `deploy.sh` script handles all deployment operations:
 - `check` - Dry-run verification (no changes)
 - `status` - Show PM2 services status
 
-**Environments:** production (default), hostinger, dev
+**Environments:** production (default), dev
 
 ### Update Application
 

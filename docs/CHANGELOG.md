@@ -170,13 +170,13 @@ ssl_domains:
 If you used provider-specific inventory names, they still work but consider renaming:
 
 ```yaml
-# Old
+# Old (provider-specific)
 scaleway-web-01
 hostinger-db-01
 
-# Recommended
-vps-web-01
-vps-db-01
+# New (environment-based)
+production-01
+dev-01
 ```
 
 #### 4. Re-provision (Optional but Recommended)

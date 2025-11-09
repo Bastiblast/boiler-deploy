@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 
 # Parse arguments - syntax: ./deploy.sh ACTION ENVIRONMENT
 ACTION=${1:-deploy}
-ENVIRONMENT=${2:-hostinger}
+ENVIRONMENT=${2:-production}
 
 # Available environments (auto-detected from inventory directory)
 VALID_ENVS=$(ls -d inventory/*/ 2>/dev/null | xargs -n 1 basename | tr '\n' ' ')
@@ -63,13 +63,13 @@ ACTIONS:
 
 ENVIRONMENTS:
   Available: $VALID_ENVS
-  Default: hostinger
+  Default: production
 
 EXAMPLES:
-  $0 provision hostinger     # First-time server setup
-  $0 deploy                  # Deploy to hostinger (default)
+  $0 provision               # First-time server setup (production)
+  $0 deploy                  # Deploy to production (default)
   $0 deploy dev              # Deploy to dev
-  $0 update hostinger        # Quick update
+  $0 update production       # Quick update
   $0 status dev              # Check PM2 status
 
 For SSL configuration: ./configure-ssl.sh
@@ -115,6 +115,25 @@ check_inventory() {
         else
             print_error "No inventory file or template found"
             exit 1
+        fi
+    fi
+}
+
+check_ssh_config() {
+    # Check if user has SSH config with old 'hostinger' references
+    if [ -f ~/.ssh/config ]; then
+        if grep -qi "host.*hostinger" ~/.ssh/config 2>/dev/null; then
+            echo ""
+            print_warning "⚠️  SSH Config Update Required"
+            echo ""
+            echo "Your ~/.ssh/config contains references to 'hostinger'."
+            echo "The environment has been renamed to 'production'."
+            echo ""
+            echo "Please update your SSH config file:"
+            echo "  • Change 'Host hostinger' → 'Host production'"
+            echo "  • Or add an alias: 'Host production hostinger'"
+            echo ""
+            read -p "Press Enter to continue..." -r
         fi
     fi
 }
@@ -280,6 +299,7 @@ print_header "Deployment to $ENVIRONMENT"
 
 # Pre-flight checks
 check_inventory
+check_ssh_config
 check_connectivity
 
 # Execute action
