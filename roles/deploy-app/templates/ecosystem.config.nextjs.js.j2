@@ -3,8 +3,8 @@ module.exports = {
     name: '{{ pm2_app_name }}',
     script: 'npm',
     args: 'start',
-    instances: {{ pm2_instances }},
-    exec_mode: 'cluster',
+    instances: 1,
+    exec_mode: 'fork',
     max_memory_restart: '{{ pm2_max_memory }}',
     env: {
       NODE_ENV: '{{ node_env }}',

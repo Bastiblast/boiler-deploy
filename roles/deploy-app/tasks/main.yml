@@ -27,30 +27,106 @@
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
 
-- name: Install Node.js dependencies
+# Detect application type and configuration
+- name: Detect application type
+  include_tasks: detect-app-type.yml
+
+# Install dependencies based on package manager
+- name: Install dependencies with npm
   npm:
     path: "{{ release_path }}"
     production: yes
     state: present
   become: yes
   become_user: "{{ deploy_user }}"
+  when: package_manager | default('npm') == 'npm'
 
-- name: Build application (if build script exists)
+- name: Install dependencies with pnpm (production only for standard apps)
+  shell: pnpm install --prod
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: 
+    - package_manager | default('npm') == 'pnpm'
+    - app_type | default('nodejs') not in ['nextjs', 'nuxtjs']
+
+- name: Install dependencies with pnpm (all deps for framework apps)
+  shell: pnpm install
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: 
+    - package_manager | default('npm') == 'pnpm'
+    - app_type | default('nodejs') in ['nextjs', 'nuxtjs']
+
+- name: Install dependencies with yarn
+  shell: yarn install --production
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: package_manager | default('npm') == 'yarn'
+
+# Build application if needed
+- name: Build application with npm
   shell: npm run build
   args:
     chdir: "{{ release_path }}"
   become: yes
   become_user: "{{ deploy_user }}"
-  when: "'build' in lookup('file', release_path + '/package.json')"
-  ignore_errors: yes
+  when: 
+    - needs_build | default(false)
+    - package_manager | default('npm') == 'npm'
 
-- name: Create PM2 ecosystem file
+- name: Build application with pnpm
+  shell: pnpm run build
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: 
+    - needs_build | default(false)
+    - package_manager | default('npm') == 'pnpm'
+
+- name: Build application with yarn
+  shell: yarn build
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: 
+    - needs_build | default(false)
+    - package_manager | default('npm') == 'yarn'
+
+# Create PM2 config based on app type
+- name: Create PM2 ecosystem file for Next.js
   template:
-    src: ecosystem.config.js.j2
+    src: ecosystem.config.nextjs.js.j2
     dest: "{{ release_path }}/ecosystem.config.js"
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
     mode: '0644'
+  when: app_type | default('nodejs') == 'nextjs'
+
+- name: Create PM2 ecosystem file for Nuxt.js
+  template:
+    src: ecosystem.config.nuxtjs.js.j2
+    dest: "{{ release_path }}/ecosystem.config.js"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: '0644'
+  when: app_type | default('nodejs') == 'nuxtjs'
+
+- name: Create PM2 ecosystem file for Node.js
+  template:
+    src: ecosystem.config.nodejs.js.j2
+    dest: "{{ release_path }}/ecosystem.config.js"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: '0644'
+  when: app_type | default('nodejs') in ['nodejs', 'express', 'fastify', 'nestjs', 'unknown']
 
 - name: Update symlink to current release
   file:

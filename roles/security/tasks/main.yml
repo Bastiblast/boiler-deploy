@@ -41,12 +41,20 @@
   loop: "{{ groups['webservers'] }}"
   when: "'dbservers' in group_names"
 
-- name: Allow Prometheus from monitoring server
+- name: Allow Prometheus access
   ufw:
     rule: allow
     port: '9090'
     proto: tcp
-    from_ip: "{{ hostvars[groups['monitoring'][0]].ansible_host }}"
+    comment: 'Prometheus'
+  when: "'monitoring' in group_names"
+
+- name: Allow Grafana access
+  ufw:
+    rule: allow
+    port: '3001'
+    proto: tcp
+    comment: 'Grafana'
   when: "'monitoring' in group_names"
 
 - name: Allow Node Exporter

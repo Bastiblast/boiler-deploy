@@ -38,3 +38,9 @@ timezone: "Europe/Paris"
 # Backup Configuration
 backup_dir: "/var/backups"
 backup_retention_days: 7
+
+# Application Type Detection (optional - auto-detected if not set)
+# Uncomment to force a specific type or package manager
+# app_type_override: "nextjs"  # Options: nodejs, nextjs, nuxtjs, express, fastify, nestjs
+# package_manager_override: "pnpm"  # Options: npm, pnpm, yarn
+# app_entry_file_override: "dist/main.js"  # Force specific entry file

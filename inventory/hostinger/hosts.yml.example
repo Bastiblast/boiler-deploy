@@ -1,0 +1,23 @@
+---
+all:
+  children:
+    webservers:
+      hosts:
+        hostinger-01:
+          ansible_host: 72.61.146.126
+          ansible_user: root
+          ansible_python_interpreter: /usr/bin/python3
+    
+    dbservers:
+      hosts:
+        hostinger-01:
+          ansible_host: 72.61.146.126
+          ansible_user: root
+          ansible_python_interpreter: /usr/bin/python3
+    
+    monitoring:
+      hosts:
+        hostinger-01:
+          ansible_host: 72.61.146.126
+          ansible_user: root
+          ansible_python_interpreter: /usr/bin/python3
