@@ -136,8 +136,12 @@ vps-web-01 | SUCCESS => {
 First-time setup installs all services (takes 5-10 minutes):
 
 ```bash
-./deploy.sh provision
+./deploy.sh provision production
 ```
+
+**Note:** The script uses syntax `./deploy.sh ACTION [ENVIRONMENT]` where:
+- **ACTION**: provision, deploy, update, rollback, check, status
+- **ENVIRONMENT**: production (default), hostinger, dev
 
 This installs:
 - ✅ Node.js 20 LTS
@@ -148,28 +152,46 @@ This installs:
 - ✅ Grafana
 - ✅ Security (UFW + fail2ban)
 
+The script will:
+- Check connectivity to your VPS
+- Ask for confirmation (provision is a critical operation)
+- Show detailed progress
+- Verify installation
+
 ### 6. Deploy Your Application
 
 Deploy your application:
 
 ```bash
+./deploy.sh deploy production
+```
+
+Or simply (production is default):
+```bash
 ./deploy.sh deploy
 ```
 
 The system will:
-1. Auto-detect your framework
-2. Clone your repository
-3. Install dependencies (with correct package manager)
-4. Build if needed (Next.js, Nuxt.js, etc.)
-5. Configure PM2 optimally
-6. Start your application
+1. Auto-detect your framework (Next.js, Express, Fastify, NestJS, Nuxt.js)
+2. Auto-detect package manager (npm, pnpm, yarn)
+3. Clone your repository
+4. Install dependencies with correct package manager
+5. Build if needed (Next.js, Nuxt.js, etc.)
+6. Configure PM2 with optimal settings
+7. Start your application with zero-downtime
 
 ## ✅ Verification
 
 ### Check Application Status
 
 ```bash
-./deploy.sh status
+./deploy.sh status production
+```
+
+Or use the health check script:
+
+```bash
+./health_check.sh production
 ```
 
 Or SSH to your VPS:
@@ -192,12 +214,47 @@ ssh deploy@your-vps-ip 'pm2 logs'
 
 ## 🔄 Common Operations
 
+### Deploy Script Commands
+
+The unified `deploy.sh` script handles all deployment operations:
+
+**Syntax:**
+```bash
+./deploy.sh ACTION [ENVIRONMENT]
+```
+
+**Available Actions:**
+- `provision` - Full server setup (first time only)
+- `deploy` - Deploy application
+- `update` - Quick update (pull latest code + restart)
+- `rollback` - Revert to previous version
+- `check` - Dry-run verification (no changes)
+- `status` - Show PM2 services status
+
+**Environments:** production (default), hostinger, dev
+
 ### Update Application
 
 Deploy latest changes:
 
 ```bash
+./deploy.sh deploy production
+# or simply (production is default)
 ./deploy.sh deploy
+```
+
+Quick update (faster, just pull + restart):
+
+```bash
+./deploy.sh update production
+```
+
+### Check Before Deploying
+
+Dry-run to see what would change:
+
+```bash
+./deploy.sh check production
 ```
 
 ### Rollback to Previous Version
@@ -205,7 +262,15 @@ Deploy latest changes:
 If something goes wrong:
 
 ```bash
-./deploy.sh rollback
+./deploy.sh rollback production
+```
+
+**Note:** The script asks for confirmation before rollback.
+
+### Check Status
+
+```bash
+./deploy.sh status production
 ```
 
 ### Restart Application
@@ -279,15 +344,41 @@ ssh deploy@your-vps-ip 'sudo netstat -tlnp | grep 3000'
 
 For more troubleshooting, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
+## 🔒 Configure HTTPS (Optional)
+
+Once your application is deployed, enable HTTPS with Let's Encrypt:
+
+### Prerequisites
+
+1. Own a domain name
+2. Configure DNS A record pointing to your VPS IP
+3. Wait for DNS propagation (5-30 minutes)
+
+### Run SSL Configuration Script
+
+```bash
+./configure-ssl.sh
+```
+
+The interactive script will:
+- Auto-detect your deployed application
+- Ask for your domain(s) and email
+- Validate DNS configuration
+- Obtain Let's Encrypt certificate
+- Configure Nginx for HTTPS
+- Set up auto-renewal
+
+For detailed guide, see [SSL Setup Guide](docs/SSL_SETUP.md).
+
 ## 📚 Next Steps
 
 Now that your application is deployed:
 
-1. **Configure SSL**: See [Configuration Guide](docs/CONFIGURATION.md#ssl-configuration)
-2. **Set up Monitoring**: Configure Grafana dashboards
+1. **Configure SSL/HTTPS**: Run `./configure-ssl.sh` (see above)
+2. **Set up Monitoring**: Access Grafana at `http://your-vps-ip:3001`
 3. **Custom Domain**: Point your domain to your VPS IP
-4. **Database**: Configure PostgreSQL connection
-5. **Environment Variables**: Add secrets to `.env`
+4. **Database**: Configure PostgreSQL connection in your app
+5. **Environment Variables**: Add secrets via `group_vars/webservers.yml`
 
 ## 🆘 Need Help?
 

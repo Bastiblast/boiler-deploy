@@ -9,11 +9,10 @@ nginx_client_max_body_size: "20M"
 
 # SSL Configuration (Let's Encrypt)
 # Set to false if you don't have a domain or want to use HTTP only
-ssl_enabled: true
-ssl_certbot_email: "million.bastien@gmail.com"
+ssl_enabled: false  # Change to true when you have a real domain
+ssl_certbot_email: "admin@example.com"  # Replace with your email
 ssl_domains:
-  - "www.basthub.cloud"
-  - "basthub.cloud"
+  - "{{ app_name }}.example.com"  # Replace with your real domain
 
 # Node.js environment variables
 node_env: "{{ app_environment }}"

@@ -60,14 +60,15 @@ cp group_vars/all.yml.example group_vars/all.yml
 # Edit with your Git repository and configuration
 
 # 4. Deploy
-./deploy.sh provision  # First time: install all services
-./deploy.sh deploy     # Deploy your application
+./deploy.sh provision production  # First time: install all services
+./deploy.sh deploy production     # Deploy your application
 ```
 
 ## 📚 Documentation
 
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 10 minutes
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Complete configuration reference
+- **[SSL Setup Guide](docs/SSL_SETUP.md)** - Configure HTTPS with Let's Encrypt
 - **[Auto-Detection System](docs/AUTO_DETECTION.md)** - How the auto-detection works
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Examples](docs/EXAMPLES.md)** - Real-world application examples
@@ -158,24 +159,55 @@ Security is enabled by default:
 
 ## 🛠️ Commands
 
+### Deployment Script
+
+Unified deployment script with syntax: `./deploy.sh ACTION [ENVIRONMENT]`
+
 ```bash
 # Provisioning (first time setup)
-./deploy.sh provision
+./deploy.sh provision production
 
 # Deploy application
+./deploy.sh deploy production
+# or simply (production is default)
 ./deploy.sh deploy
 
-# Quick update (skip provisioning)
-./deploy.sh update
+# Quick update (pull latest + restart)
+./deploy.sh update production
 
 # Rollback to previous version
-./deploy.sh rollback
+./deploy.sh rollback production
+
+# Dry-run check (no changes)
+./deploy.sh check production
 
 # Check application status
-./deploy.sh status
+./deploy.sh status production
 
 # View logs
 ssh deploy@your-vps-ip 'pm2 logs'
+```
+
+### SSL Configuration
+
+Interactive SSL setup with Let's Encrypt:
+
+```bash
+./configure-ssl.sh
+```
+
+Automatically configures HTTPS with:
+- Domain validation
+- Certificate installation
+- Auto-renewal setup
+- Nginx HTTPS configuration
+
+See [SSL Setup Guide](docs/SSL_SETUP.md) for details.
+
+### Health Check
+
+```bash
+./health_check.sh production
 ```
 
 ## 📦 Project Structure
@@ -183,6 +215,10 @@ ssh deploy@your-vps-ip 'pm2 logs'
 ```
 boiler-deploy/
 ├── playbooks/          # Ansible playbooks
+│   ├── provision.yml   # Full server setup
+│   ├── deploy.yml      # Application deployment
+│   ├── update.yml      # Quick updates
+│   └── rollback.yml    # Version rollback
 ├── roles/              # Ansible roles
 │   ├── common/         # Base system setup
 │   ├── postgresql/     # Database
@@ -190,10 +226,22 @@ boiler-deploy/
 │   ├── nginx/          # Reverse proxy
 │   ├── monitoring/     # Prometheus + Grafana
 │   ├── security/       # Firewall + fail2ban
-│   └── deploy-app/     # Application deployment
+│   └── deploy-app/     # Application deployment (with auto-detection)
 ├── inventory/          # Server configurations
+│   ├── production/     # Production environment
+│   ├── hostinger/      # Hostinger VPS environment
+│   └── dev/            # Development environment
 ├── group_vars/         # Configuration variables
-└── deploy.sh           # Deployment script
+├── docs/               # Documentation
+│   ├── CONFIGURATION.md
+│   ├── SSL_SETUP.md
+│   ├── AUTO_DETECTION.md
+│   ├── TROUBLESHOOTING.md
+│   ├── EXAMPLES.md
+│   └── CHANGELOG.md
+├── deploy.sh           # Unified deployment script
+├── configure-ssl.sh    # SSL configuration helper
+└── health_check.sh     # Health check script
 ```
 
 ## 🤝 Contributing
