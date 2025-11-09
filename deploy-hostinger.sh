@@ -5,7 +5,7 @@
 set -e
 
 ACTION=${1:-deploy}
-INVENTORY="inventory/hostinger/hosts.yml"
+INVENTORY="inventory/hostinger"
 
 # Couleurs pour l'affichage
 GREEN='\033[0;32m'
