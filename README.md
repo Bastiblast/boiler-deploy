@@ -45,6 +45,33 @@ Works with any VPS provider:
 
 ## 🚀 Quick Start
 
+### Option 1: Interactive Setup Wizard (Recommended) 🎯
+
+Use our interactive wizard to configure your deployment in minutes:
+
+```bash
+# Run the setup wizard
+./setup.sh
+
+# Follow the interactive prompts to configure:
+# - Environment (production, staging, dev)
+# - SSH keys
+# - VPS servers (1-20 web servers)
+# - Database and monitoring
+# - Application details
+```
+
+The wizard will:
+- ✅ Validate all inputs (IPs, SSH connections, Git repos)
+- ✅ Generate inventory and configuration files
+- ✅ Configure load balancing for multiple servers
+- ✅ Provide troubleshooting tips on failures
+- ✅ Save state for resume capability
+
+See the [Setup Wizard Guide](docs/SETUP_WIZARD.md) for full documentation.
+
+### Option 2: Manual Configuration
+
 Get your application deployed in 10 minutes. See the [Quick Start Guide](QUICKSTART.md) for detailed instructions.
 
 ```bash
@@ -66,9 +93,15 @@ cp group_vars/all.yml.example group_vars/all.yml
 
 ## 📚 Documentation
 
+### Getting Started
+- **[Setup Wizard Guide](docs/SETUP_WIZARD.md)** - Interactive multi-server configuration 🆕
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 10 minutes
+
+### Configuration
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Complete configuration reference
 - **[SSL Setup Guide](docs/SSL_SETUP.md)** - Configure HTTPS with Let's Encrypt
+
+### Advanced
 - **[Auto-Detection System](docs/AUTO_DETECTION.md)** - How the auto-detection works
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Examples](docs/EXAMPLES.md)** - Real-world application examples

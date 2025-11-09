@@ -37,6 +37,47 @@ ansible --version
 
 ## 🚀 Step-by-Step Setup
 
+### Choose Your Path
+
+**Option A: Setup Wizard (Recommended)** 🎯
+- Interactive configuration
+- Multi-server support
+- Validation & testing built-in
+- Perfect for beginners
+
+**Option B: Manual Setup**
+- Full control over configuration
+- Direct file editing
+- Faster for experienced users
+
+---
+
+## Option A: Setup Wizard
+
+### 1. Run the Setup Wizard
+
+```bash
+cd boiler-deploy
+./setup.sh
+```
+
+The wizard will guide you through:
+1. ✓ Prerequisites check (Ansible, SSH, Git)
+2. ✓ Environment setup (production, staging, dev)
+3. ✓ SSH key configuration
+4. ✓ VPS server configuration (1-20 servers)
+5. ✓ Database and monitoring setup
+6. ✓ Application configuration
+7. ✓ Connection testing
+
+**See [Setup Wizard Guide](docs/SETUP_WIZARD.md) for detailed documentation.**
+
+After completing the wizard, skip to **Step 5: Provision Your Servers**.
+
+---
+
+## Option B: Manual Setup
+
 ### 1. Install Ansible Collections
 
 Install required Ansible collections:
@@ -130,6 +171,10 @@ vps-web-01 | SUCCESS => {
     "ping": "pong"
 }
 ```
+
+---
+
+## Continue Here (Both Options)
 
 ### 5. Provision Your VPS
 
