@@ -14,5 +14,5 @@ ssl_domains:
   - "{{ app_name }}.example.com"  # Replace with your domain
 
 # Node.js environment variables
-node_env: "{{ environment }}"
+node_env: "{{ app_environment }}"
 node_options: "--max-old-space-size=2048"
