@@ -6,8 +6,8 @@ set -e
 ENVIRONMENT=${1:-dev}
 ACTION=${2:-deploy}
 
-if [ "$ENVIRONMENT" != "dev" ] && [ "$ENVIRONMENT" != "production" ]; then
-    echo "Usage: $0 [dev|production] [provision|deploy|update|rollback]"
+if [ "$ENVIRONMENT" != "dev" ] && [ "$ENVIRONMENT" != "production" ] && [ "$ENVIRONMENT" != "hostinger" ]; then
+    echo "Usage: $0 [dev|production|hostinger] [provision|deploy|update|rollback]"
     exit 1
 fi
 
