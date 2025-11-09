@@ -13,11 +13,14 @@
     state: present
     update_cache: yes
 
-- name: Install PM2 globally
+- name: Install PM2 and pnpm globally
   npm:
-    name: pm2
+    name: "{{ item }}"
     global: yes
     state: present
+  loop:
+    - pm2
+    - pnpm
 
 - name: Setup PM2 startup script
   shell: pm2 startup systemd -u {{ deploy_user }} --hp /home/{{ deploy_user }}
