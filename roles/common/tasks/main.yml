@@ -36,7 +36,8 @@
 
 - name: Set timezone
   timezone:
-    name: "{{ timezone }}"
+    name: "{{ timezone | default('Europe/Paris') }}"
+  when: timezone is defined
 
 - name: Create deploy user
   user:
