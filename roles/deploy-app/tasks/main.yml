@@ -52,7 +52,7 @@
     - app_type | default('nodejs') not in ['nextjs', 'nuxtjs']
 
 - name: Install dependencies with pnpm (all deps for framework apps)
-  shell: pnpm install
+  shell: pnpm install --frozen-lockfile
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -60,6 +60,18 @@
   when: 
     - package_manager | default('npm') == 'pnpm'
     - app_type | default('nodejs') in ['nextjs', 'nuxtjs']
+
+- name: Verify TypeScript installation for Next.js with TS config
+  shell: pnpm list typescript || pnpm add -D typescript
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: 
+    - package_manager | default('npm') == 'pnpm'
+    - app_type | default('nodejs') == 'nextjs'
+  changed_when: false
+  ignore_errors: yes
 
 - name: Install dependencies with yarn
   shell: yarn install --production

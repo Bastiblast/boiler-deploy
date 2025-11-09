@@ -43,19 +43,6 @@
   set_fact:
     app_type: "{{ app_type_override | default(app_type_detected | default('nodejs')) }}"
 
-- name: Detect package manager
-  set_fact:
-    package_manager: >-
-      {%- if lookup('first_found', [release_path + '/pnpm-lock.yaml'], errors='ignore') -%}
-        pnpm
-      {%- elif lookup('first_found', [release_path + '/yarn.lock'], errors='ignore') -%}
-        yarn
-      {%- elif lookup('first_found', [release_path + '/package-lock.json'], errors='ignore') -%}
-        npm
-      {%- else -%}
-        npm
-      {%- endif -%}
-
 - name: Check if pnpm-lock.yaml exists
   stat:
     path: "{{ release_path }}/pnpm-lock.yaml"
@@ -86,17 +73,27 @@
     needs_build: "{{ 'build' in (package_json.scripts | default({})) }}"
   when: package_json is defined
 
+- name: Check for entry files
+  stat:
+    path: "{{ release_path }}/{{ item }}"
+  register: entry_files_check
+  loop:
+    - index.js
+    - server.js
+    - app.js
+    - src/index.js
+    - src/server.js
+    - src/app.js
+  when: package_json is defined
+
 - name: Detect main entry file (auto)
   set_fact:
     app_entry_file_detected: >-
       {%- if package_json is defined and package_json.main is defined -%}
         {{ package_json.main }}
       {%- else -%}
-        {%- if lookup('first_found', [release_path + '/index.js', release_path + '/server.js', release_path + '/app.js', release_path + '/src/index.js', release_path + '/src/server.js', release_path + '/src/app.js'], errors='ignore') -%}
-          {{ lookup('first_found', [release_path + '/index.js', release_path + '/server.js', release_path + '/app.js', release_path + '/src/index.js', release_path + '/src/server.js', release_path + '/src/app.js'], errors='ignore') | basename }}
-        {%- else -%}
-          index.js
-        {%- endif -%}
+        {%- set found_file = entry_files_check.results | selectattr('stat.exists') | map(attribute='item') | list | first | default('index.js') -%}
+        {{ found_file }}
       {%- endif -%}
   when: package_json is defined
 
