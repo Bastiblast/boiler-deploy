@@ -41,13 +41,25 @@
   become_user: "{{ deploy_user }}"
   when: package_manager | default('npm') == 'npm'
 
-- name: Install dependencies with pnpm
+- name: Install dependencies with pnpm (production only for standard apps)
   shell: pnpm install --prod
   args:
     chdir: "{{ release_path }}"
   become: yes
   become_user: "{{ deploy_user }}"
-  when: package_manager | default('npm') == 'pnpm'
+  when: 
+    - package_manager | default('npm') == 'pnpm'
+    - app_type | default('nodejs') not in ['nextjs', 'nuxtjs']
+
+- name: Install dependencies with pnpm (all deps for framework apps)
+  shell: pnpm install
+  args:
+    chdir: "{{ release_path }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: 
+    - package_manager | default('npm') == 'pnpm'
+    - app_type | default('nodejs') in ['nextjs', 'nuxtjs']
 
 - name: Install dependencies with yarn
   shell: yarn install --production
