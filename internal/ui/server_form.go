@@ -25,7 +25,7 @@ type ServerForm struct {
 
 // NewServerForm creates a form for adding or editing a server
 func NewServerForm(env *inventory.Environment, editServer ...*inventory.Server) ServerForm {
-	inputs := make([]textinput.Model, 6)
+	inputs := make([]textinput.Model, 10)
 
 	// Server name
 	inputs[0] = textinput.New()
@@ -43,20 +43,36 @@ func NewServerForm(env *inventory.Environment, editServer ...*inventory.Server) 
 	inputs[2].Placeholder = "22"
 	inputs[2].Width = 10
 
-	// App Port
-	inputs[3] = textinput.New()
-	inputs[3].Placeholder = "3000"
-	inputs[3].Width = 10
-
 	// SSH User
-	inputs[4] = textinput.New()
-	inputs[4].Placeholder = "root"
-	inputs[4].Width = 20
+	inputs[3] = textinput.New()
+	inputs[3].Placeholder = "root"
+	inputs[3].Width = 20
 
 	// SSH Key Path
+	inputs[4] = textinput.New()
+	inputs[4].Placeholder = "~/.ssh/id_rsa"
+	inputs[4].Width = 50
+
+	// App-specific fields (for web servers)
+	// App Port
 	inputs[5] = textinput.New()
-	inputs[5].Placeholder = "~/.ssh/id_rsa"
-	inputs[5].Width = 50
+	inputs[5].Placeholder = "3000"
+	inputs[5].Width = 10
+
+	// Git Repository
+	inputs[6] = textinput.New()
+	inputs[6].Placeholder = "https://github.com/user/repo.git"
+	inputs[6].Width = 50
+
+	// Git Branch
+	inputs[7] = textinput.New()
+	inputs[7].Placeholder = "main"
+	inputs[7].Width = 30
+
+	// Node.js Version
+	inputs[8] = textinput.New()
+	inputs[8].Placeholder = "20"
+	inputs[8].Width = 10
 
 	form := ServerForm{
 		environment: env,
@@ -72,9 +88,16 @@ func NewServerForm(env *inventory.Environment, editServer ...*inventory.Server) 
 		form.inputs[0].SetValue(editServer[0].Name)
 		form.inputs[1].SetValue(editServer[0].IP)
 		form.inputs[2].SetValue(strconv.Itoa(editServer[0].Port))
-		form.inputs[3].SetValue(strconv.Itoa(editServer[0].AppPort))
-		form.inputs[4].SetValue(editServer[0].SSHUser)
-		form.inputs[5].SetValue(editServer[0].SSHKeyPath)
+		form.inputs[3].SetValue(editServer[0].SSHUser)
+		form.inputs[4].SetValue(editServer[0].SSHKeyPath)
+		
+		// App config
+		if editServer[0].AppPort > 0 {
+			form.inputs[5].SetValue(strconv.Itoa(editServer[0].AppPort))
+		}
+		form.inputs[6].SetValue(editServer[0].GitRepo)
+		form.inputs[7].SetValue(editServer[0].GitBranch)
+		form.inputs[8].SetValue(editServer[0].NodeVersion)
 		
 		// Set type index
 		switch editServer[0].Type {
@@ -104,7 +127,13 @@ func (f ServerForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "tab", "down":
 			f.focusIndex++
-			if f.focusIndex > len(f.inputs) {
+			// Calculate max index based on server type
+			maxIndex := 5 // Common fields + type selector
+			serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
+			if serverType == "web" {
+				maxIndex = 9 // Common + app fields + type selector
+			}
+			if f.focusIndex > maxIndex {
 				f.focusIndex = 0
 			}
 			return f, f.updateFocus()
@@ -112,18 +141,41 @@ func (f ServerForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab", "up":
 			f.focusIndex--
 			if f.focusIndex < 0 {
-				f.focusIndex = len(f.inputs)
+				// Calculate max index based on server type
+				maxIndex := 5
+				serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
+				if serverType == "web" {
+					maxIndex = 9
+				}
+				f.focusIndex = maxIndex
 			}
 			return f, f.updateFocus()
 
 		case "left":
-			if f.focusIndex == len(f.inputs) && f.typeIndex > 0 {
+			// Type selector position depends on whether we're showing app fields
+			serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
+			typeSelectorPos := 5
+			if serverType == "web" {
+				typeSelectorPos = 9
+			}
+			if f.focusIndex == typeSelectorPos && f.typeIndex > 0 {
 				f.typeIndex--
+				// Reset focus to account for different field counts
+				f.focusIndex = 0
+				return f, f.updateFocus()
 			}
 
 		case "right":
-			if f.focusIndex == len(f.inputs) && f.typeIndex < 2 {
+			serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
+			typeSelectorPos := 5
+			if serverType == "web" {
+				typeSelectorPos = 9
+			}
+			if f.focusIndex == typeSelectorPos && f.typeIndex < 2 {
 				f.typeIndex++
+				// Reset focus to account for different field counts
+				f.focusIndex = 0
+				return f, f.updateFocus()
 			}
 
 		case "enter":
@@ -211,21 +263,12 @@ func (f *ServerForm) buildServer() (*inventory.Server, error) {
 		return nil, fmt.Errorf("invalid SSH port: %v", err)
 	}
 
-	appPortStr := f.inputs[3].Value()
-	if appPortStr == "" {
-		appPortStr = "3000"
-	}
-	appPort, err := strconv.Atoi(appPortStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid app port: %v", err)
-	}
-
-	sshUser := f.inputs[4].Value()
+	sshUser := f.inputs[3].Value()
 	if sshUser == "" {
 		sshUser = "root"
 	}
 
-	sshKeyPath := f.inputs[5].Value()
+	sshKeyPath := f.inputs[4].Value()
 	if sshKeyPath == "" {
 		sshKeyPath = "~/.ssh/id_rsa"
 	}
@@ -239,8 +282,38 @@ func (f *ServerForm) buildServer() (*inventory.Server, error) {
 		SSHUser:       sshUser,
 		SSHKeyPath:    sshKeyPath,
 		Type:          serverType,
-		AppPort:       appPort,
 		AnsibleBecome: true,
+	}
+
+	// For web servers, get app-specific configuration
+	if serverType == "web" {
+		appPortStr := f.inputs[5].Value()
+		if appPortStr == "" {
+			return nil, fmt.Errorf("application port is required for web servers")
+		}
+		appPort, err := strconv.Atoi(appPortStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid app port: %v", err)
+		}
+		server.AppPort = appPort
+
+		gitRepo := f.inputs[6].Value()
+		if gitRepo == "" {
+			return nil, fmt.Errorf("git repository is required for web servers")
+		}
+		server.GitRepo = gitRepo
+
+		gitBranch := f.inputs[7].Value()
+		if gitBranch == "" {
+			gitBranch = "main"
+		}
+		server.GitBranch = gitBranch
+
+		nodeVersion := f.inputs[8].Value()
+		if nodeVersion == "" {
+			nodeVersion = "20"
+		}
+		server.NodeVersion = nodeVersion
 	}
 
 	// Validate server
@@ -271,27 +344,53 @@ func (f ServerForm) View() string {
 	}
 	b.WriteString("\n\n")
 
-	// Text inputs
-	labels := []string{
+	// Common fields (all server types)
+	commonLabels := []string{
 		"Server name:",
 		"IP address:",
 		"SSH port:",
-		"Application port:",
 		"SSH user:",
 		"SSH key path:",
 	}
 
-	for i, input := range f.inputs {
+	for i := 0; i < 5; i++ {
 		cursor := "  "
 		if f.focusIndex == i {
 			cursor = "▶ "
 		}
-		b.WriteString(fmt.Sprintf("%s%s\n  %s\n\n", cursor, labels[i], input.View()))
+		b.WriteString(fmt.Sprintf("%s%s\n  %s\n\n", cursor, commonLabels[i], f.inputs[i].View()))
+	}
+
+	// App-specific fields (only for web servers)
+	serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
+	if serverType == "web" {
+		b.WriteString("─── Application Configuration ───\n\n")
+		
+		appLabels := []string{
+			"Application port:",
+			"Git repository:",
+			"Git branch:",
+			"Node.js version:",
+		}
+
+		for i := 0; i < 4; i++ {
+			cursor := "  "
+			if f.focusIndex == i+5 {
+				cursor = "▶ "
+			}
+			b.WriteString(fmt.Sprintf("%s%s\n  %s\n\n", cursor, appLabels[i], f.inputs[i+5].View()))
+		}
 	}
 
 	// Server type selector
+	serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
+	typeSelectorPos := 5
+	if serverType == "web" {
+		typeSelectorPos = 9
+	}
+	
 	cursor := "  "
-	if f.focusIndex == len(f.inputs) {
+	if f.focusIndex == typeSelectorPos {
 		cursor = "▶ "
 	}
 	b.WriteString(cursor + "Server type:\n  ")

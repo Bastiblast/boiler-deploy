@@ -72,16 +72,29 @@ func (g *Generator) GenerateHostsYAML(env Environment) ([]byte, error) {
 	return yaml.Marshal(hosts)
 }
 
-// GenerateGroupVarsYAML generates group_vars/all.yml content
+// GenerateHostVarsYAML generates host_vars/{hostname}.yml content for a web server
+func (g *Generator) GenerateHostVarsYAML(server Server) ([]byte, error) {
+	if server.Type != "web" {
+		// Non-web servers don't need host_vars
+		return nil, nil
+	}
+	
+	hostVars := map[string]interface{}{
+		"app_port":       server.AppPort,
+		"app_repo":       server.GitRepo,
+		"app_branch":     server.GitBranch,
+		"nodejs_version": server.NodeVersion,
+		"deploy_user":    "root",
+	}
+	
+	return yaml.Marshal(hostVars)
+}
+
+// GenerateGroupVarsYAML generates group_vars/all.yml with common settings
 func (g *Generator) GenerateGroupVarsYAML(env Environment) ([]byte, error) {
 	groupVars := map[string]interface{}{
-		"app_name":       env.Config.AppName,
-		"app_repo":       env.Config.AppRepo,
-		"app_branch":     env.Config.AppBranch,
-		"nodejs_version": env.Config.NodeJSVersion,
-		"app_port":       env.Config.AppPort,
-		"deploy_user":    env.Config.DeployUser,
-		"timezone":       env.Config.Timezone,
+		"deploy_user": env.Config.DeployUser,
+		"timezone":    env.Config.Timezone,
 	}
 	
 	return yaml.Marshal(groupVars)

@@ -34,8 +34,13 @@ type Server struct {
 	SSHUser       string `yaml:"ssh_user"`
 	SSHKeyPath    string `yaml:"ssh_key_path"`
 	Type          string `yaml:"type"` // web, db, monitoring
-	AppPort       int    `yaml:"app_port,omitempty"`
 	AnsibleBecome bool   `yaml:"ansible_become"`
+	
+	// Application configuration (only for web servers)
+	AppPort       int    `yaml:"app_port,omitempty"`
+	GitRepo       string `yaml:"git_repo,omitempty"`
+	GitBranch     string `yaml:"git_branch,omitempty"`
+	NodeVersion   string `yaml:"node_version,omitempty"`
 }
 
 // ValidationResult holds validation results

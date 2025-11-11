@@ -23,9 +23,15 @@ func NewStorage(basePath string) *Storage {
 func (s *Storage) SaveEnvironment(env inventory.Environment) error {
 	envPath := filepath.Join(s.basePath, "inventory", env.Name)
 	
-	// Create directory if it doesn't exist
+	// Create directory structure
 	if err := os.MkdirAll(envPath, 0755); err != nil {
 		return fmt.Errorf("failed to create environment directory: %v", err)
+	}
+	
+	// Create host_vars directory
+	hostVarsPath := filepath.Join(envPath, "host_vars")
+	if err := os.MkdirAll(hostVarsPath, 0755); err != nil {
+		return fmt.Errorf("failed to create host_vars directory: %v", err)
 	}
 	
 	// Save environment config
@@ -51,8 +57,25 @@ func (s *Storage) SaveEnvironment(env inventory.Environment) error {
 		return fmt.Errorf("failed to write hosts.yml: %v", err)
 	}
 	
-	// Generate and save group_vars
-	groupVarsPath := filepath.Join(s.basePath, "group_vars")
+	// Generate and save host_vars for web servers
+	for _, server := range env.Servers {
+		if server.Type == "web" {
+			hostVarsData, err := generator.GenerateHostVarsYAML(server)
+			if err != nil {
+				return fmt.Errorf("failed to generate host_vars for %s: %v", server.Name, err)
+			}
+			
+			if hostVarsData != nil {
+				hostVarsFile := filepath.Join(hostVarsPath, fmt.Sprintf("%s.yml", server.Name))
+				if err := os.WriteFile(hostVarsFile, hostVarsData, 0644); err != nil {
+					return fmt.Errorf("failed to write host_vars for %s: %v", server.Name, err)
+				}
+			}
+		}
+	}
+	
+	// Generate and save group_vars (common settings only)
+	groupVarsPath := filepath.Join(envPath, "group_vars")
 	if err := os.MkdirAll(groupVarsPath, 0755); err != nil {
 		return fmt.Errorf("failed to create group_vars directory: %v", err)
 	}
@@ -62,7 +85,7 @@ func (s *Storage) SaveEnvironment(env inventory.Environment) error {
 		return fmt.Errorf("failed to generate group_vars: %v", err)
 	}
 	
-	groupVarsFile := filepath.Join(groupVarsPath, fmt.Sprintf("%s.yml", env.Name))
+	groupVarsFile := filepath.Join(groupVarsPath, "all.yml")
 	if err := os.WriteFile(groupVarsFile, groupVarsData, 0644); err != nil {
 		return fmt.Errorf("failed to write group_vars: %v", err)
 	}
