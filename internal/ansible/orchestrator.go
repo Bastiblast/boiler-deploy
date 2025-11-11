@@ -2,6 +2,7 @@ package ansible
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/bastiblast/boiler-deploy/internal/inventory"
@@ -58,9 +59,12 @@ func (o *Orchestrator) QueueDeploy(serverNames []string, priority int) {
 }
 
 func (o *Orchestrator) QueueCheck(serverNames []string, priority int) {
+	log.Printf("[ORCHESTRATOR] QueueCheck called with %d servers: %v", len(serverNames), serverNames)
 	for _, name := range serverNames {
+		log.Printf("[ORCHESTRATOR] Adding check action for server: %s", name)
 		o.queue.Add(name, status.ActionCheck, priority)
 	}
+	log.Printf("[ORCHESTRATOR] Queue size after adding checks: %d", o.GetQueueSize())
 }
 
 func (o *Orchestrator) Start(servers []*inventory.Server) {
@@ -86,18 +90,23 @@ func (o *Orchestrator) Stop() {
 }
 
 func (o *Orchestrator) processQueue(servers []*inventory.Server) {
+	log.Println("[ORCHESTRATOR] processQueue started")
 	for {
 		select {
 		case <-o.stopChan:
+			log.Println("[ORCHESTRATOR] processQueue received stop signal")
 			return
 		default:
 			action := o.queue.Next()
 			if action == nil {
+				// No action, sleep briefly to avoid busy loop
 				continue
 			}
 
+			log.Printf("[ORCHESTRATOR] Processing action: %s for server %s", action.Action, action.ServerName)
 			o.executeAction(action, servers)
 			o.queue.Complete()
+			log.Printf("[ORCHESTRATOR] Completed action: %s for server %s", action.Action, action.ServerName)
 		}
 	}
 }
@@ -159,16 +168,22 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 		}
 
 	case status.ActionCheck:
+		log.Printf("[ORCHESTRATOR] Executing check for %s (IP: %s, Port: %d)", action.ServerName, server.IP, server.AppPort)
 		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "")
 		close(progressChan)
 
+		log.Printf("[ORCHESTRATOR] Running health check: curl http://%s:%d/", server.IP, server.AppPort)
 		if err := o.executor.HealthCheck(server.IP, server.AppPort); err != nil {
+			log.Printf("[ORCHESTRATOR] Health check FAILED for %s: %v", action.ServerName, err)
 			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
 				fmt.Sprintf("Health check failed: %v", err))
 		} else {
+			log.Printf("[ORCHESTRATOR] Health check PASSED for %s", action.ServerName)
 			currentStatus := o.statusMgr.GetStatus(action.ServerName)
 			if currentStatus.State == status.StateDeploying || currentStatus.State == status.StateVerifying {
 				o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
+			} else {
+				log.Printf("[ORCHESTRATOR] Server %s in state %v, not updating to deployed", action.ServerName, currentStatus.State)
 			}
 		}
 	}

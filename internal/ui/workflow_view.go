@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -131,7 +132,9 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return wv, nil
 
 	case validationCompleteMsg:
+		log.Println("[WORKFLOW] Received validationCompleteMsg, refreshing statuses")
 		wv.refreshStatuses()
+		log.Println("[WORKFLOW] Statuses refreshed")
 		return wv, nil
 	}
 
@@ -164,6 +167,7 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if wv.cursor < len(wv.servers) {
 			serverName := wv.servers[wv.cursor].Name
 			wv.selectedServers[serverName] = !wv.selectedServers[serverName]
+			log.Printf("[WORKFLOW] Toggled selection for %s: %v", serverName, wv.selectedServers[serverName])
 		}
 
 	case "a":
@@ -176,6 +180,13 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "v":
+		log.Println("[WORKFLOW] Key 'v' pressed - starting validation")
+		selected := wv.getSelectedServers()
+		log.Printf("[WORKFLOW] Validating %d selected servers", len(selected))
+		if len(selected) == 0 {
+			log.Println("[WORKFLOW] No servers selected for validation")
+			return wv, nil
+		}
 		return wv, wv.validateSelectedCmd()
 
 	case "p":
@@ -185,6 +196,13 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		wv.deploySelected()
 
 	case "c":
+		log.Println("[WORKFLOW] Key 'c' pressed - starting check")
+		selected := wv.getSelectedServerNames()
+		log.Printf("[WORKFLOW] Checking %d selected servers: %v", len(selected), selected)
+		if len(selected) == 0 {
+			log.Println("[WORKFLOW] No servers selected for check")
+			return wv, nil
+		}
 		wv.checkSelected()
 
 	case "l":
@@ -226,11 +244,24 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (wv *WorkflowView) validateSelectedCmd() tea.Cmd {
 	return func() tea.Msg {
+		log.Println("[WORKFLOW] Validation command executing")
 		selected := wv.getSelectedServers()
-		for _, server := range selected {
+		log.Printf("[WORKFLOW] Got %d servers to validate", len(selected))
+		
+		for i, server := range selected {
+			log.Printf("[WORKFLOW] Validating server %d/%d: %s", i+1, len(selected), server.Name)
 			checks := wv.statusMgr.ValidateServer(server)
-			wv.statusMgr.UpdateReadyChecks(server.Name, checks)
+			log.Printf("[WORKFLOW] Validation checks for %s: IP=%v SSH=%v Port=%v Fields=%v", 
+				server.Name, checks.IPValid, checks.SSHKeyExists, checks.PortValid, checks.AllFieldsFilled)
+			
+			if err := wv.statusMgr.UpdateReadyChecks(server.Name, checks); err != nil {
+				log.Printf("[WORKFLOW] Error updating status for %s: %v", server.Name, err)
+			} else {
+				log.Printf("[WORKFLOW] Successfully updated status for %s", server.Name)
+			}
 		}
+		
+		log.Println("[WORKFLOW] Validation complete, sending message")
 		return validationCompleteMsg{}
 	}
 }
@@ -251,9 +282,22 @@ func (wv *WorkflowView) deploySelected() {
 
 func (wv *WorkflowView) checkSelected() {
 	names := wv.getSelectedServerNames()
-	if len(names) > 0 {
-		wv.orchestrator.QueueCheck(names, 0)
+	log.Printf("[WORKFLOW] checkSelected called with %d servers: %v", len(names), names)
+	
+	if len(names) == 0 {
+		log.Println("[WORKFLOW] No servers to check")
+		return
 	}
+	
+	// Ensure orchestrator is running
+	if !wv.orchestrator.IsRunning() {
+		log.Println("[WORKFLOW] Orchestrator not running, starting it")
+		wv.orchestrator.Start(wv.servers)
+	}
+	
+	log.Printf("[WORKFLOW] Queueing check actions for: %v", names)
+	wv.orchestrator.QueueCheck(names, 0)
+	log.Printf("[WORKFLOW] Queue size after adding checks: %d", wv.orchestrator.GetQueueSize())
 }
 
 func (wv *WorkflowView) getSelectedServers() []*inventory.Server {

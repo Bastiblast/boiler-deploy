@@ -3,6 +3,7 @@ package ansible
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -86,9 +87,11 @@ func (q *Queue) Add(serverName string, action status.ActionType, priority int) s
 		QueuedAt:   time.Now(),
 	}
 
+	log.Printf("[QUEUE] Adding action: %s for server %s (priority: %d, id: %s)", action, serverName, priority, id)
 	q.actions = append(q.actions, queuedAction)
 	q.sort()
 	q.Save()
+	log.Printf("[QUEUE] Action added, queue size now: %d", len(q.actions))
 
 	return id
 }
@@ -115,6 +118,8 @@ func (q *Queue) Next() *status.QueuedAction {
 	now := time.Now()
 	action.StartedAt = &now
 	q.current = action
+	
+	log.Printf("[QUEUE] Next action: %s for server %s (id: %s)", action.Action, action.ServerName, action.ID)
 
 	return action
 }
@@ -124,10 +129,13 @@ func (q *Queue) Complete() {
 	defer q.mu.Unlock()
 
 	if len(q.actions) > 0 {
+		completedAction := q.actions[0]
+		log.Printf("[QUEUE] Completing action: %s for server %s", completedAction.Action, completedAction.ServerName)
 		q.actions = q.actions[1:]
 	}
 	q.current = nil
 	q.Save()
+	log.Printf("[QUEUE] Action completed, queue size now: %d", len(q.actions))
 }
 
 func (q *Queue) Stop() {

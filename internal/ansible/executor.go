@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -132,6 +133,17 @@ func (e *Executor) Deploy(serverName string, progressChan chan<- string) (*Execu
 }
 
 func (e *Executor) HealthCheck(ip string, port int) error {
-	cmd := exec.Command("curl", "-sf", "-m", "5", fmt.Sprintf("http://%s:%d/", ip, port))
-	return cmd.Run()
+	url := fmt.Sprintf("http://%s:%d/", ip, port)
+	log.Printf("[EXECUTOR] Running health check: curl -sf -m 5 %s", url)
+	
+	cmd := exec.Command("curl", "-sf", "-m", "5", url)
+	output, err := cmd.CombinedOutput()
+	
+	if err != nil {
+		log.Printf("[EXECUTOR] Health check failed: %v, output: %s", err, string(output))
+		return fmt.Errorf("curl failed: %w (output: %s)", err, string(output))
+	}
+	
+	log.Printf("[EXECUTOR] Health check successful for %s", url)
+	return nil
 }

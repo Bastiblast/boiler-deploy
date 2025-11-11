@@ -3,6 +3,7 @@ package status
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -91,6 +92,8 @@ func (m *Manager) UpdateStatus(serverName string, state ServerState, action Acti
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	log.Printf("[STATUS] Updating status for %s: state=%v action=%v error=%q", serverName, state, action, errorMsg)
+
 	status := &ServerStatus{
 		Name:         serverName,
 		State:        state,
@@ -100,15 +103,25 @@ func (m *Manager) UpdateStatus(serverName string, state ServerState, action Acti
 	}
 
 	m.statuses[serverName] = status
-	return m.save()
+	err := m.save()
+	if err != nil {
+		log.Printf("[STATUS] Error saving status for %s: %v", serverName, err)
+	} else {
+		log.Printf("[STATUS] Successfully saved status for %s", serverName)
+	}
+	return err
 }
 
 func (m *Manager) UpdateReadyChecks(serverName string, checks ReadyChecks) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	log.Printf("[STATUS] UpdateReadyChecks for %s: IP=%v SSH=%v Port=%v Fields=%v", 
+		serverName, checks.IPValid, checks.SSHKeyExists, checks.PortValid, checks.AllFieldsFilled)
+
 	status, ok := m.statuses[serverName]
 	if !ok {
+		log.Printf("[STATUS] Creating new status for %s", serverName)
 		status = &ServerStatus{
 			Name:       serverName,
 			State:      StateUnknown,
@@ -121,14 +134,22 @@ func (m *Manager) UpdateReadyChecks(serverName string, checks ReadyChecks) error
 
 	if checks.IsReady() {
 		if status.State == StateUnknown || status.State == StateNotReady {
+			log.Printf("[STATUS] Server %s is ready, updating state to Ready", serverName)
 			status.State = StateReady
 		}
 	} else {
+		log.Printf("[STATUS] Server %s is not ready, updating state to NotReady", serverName)
 		status.State = StateNotReady
 	}
 
 	m.statuses[serverName] = status
-	return m.save()
+	err := m.save()
+	if err != nil {
+		log.Printf("[STATUS] Error saving ready checks for %s: %v", serverName, err)
+	} else {
+		log.Printf("[STATUS] Successfully saved ready checks for %s", serverName)
+	}
+	return err
 }
 
 func (m *Manager) ValidateServer(server *inventory.Server) ReadyChecks {
