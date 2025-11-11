@@ -156,13 +156,21 @@ func (f EnvironmentForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (f *EnvironmentForm) updateFocus() tea.Cmd {
-	cmds := make([]tea.Cmd, len(f.inputs))
+	cmds := make([]tea.Cmd, 0)
 	
-	for i := 0; i < len(f.inputs); i++ {
-		if i == f.focusIndex {
-			cmds[i] = f.inputs[i].Focus()
+	// Name input at focus position 0
+	if f.focusIndex == 0 {
+		cmds = append(cmds, f.inputs[0].Focus())
+	} else {
+		f.inputs[0].Blur()
+	}
+	
+	// IP input at focus position 2 (if mono server enabled)
+	if f.monoServer {
+		if f.focusIndex == 2 {
+			cmds = append(cmds, f.inputs[1].Focus())
 		} else {
-			f.inputs[i].Blur()
+			f.inputs[1].Blur()
 		}
 	}
 	
