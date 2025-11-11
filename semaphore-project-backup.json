@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "name": "boiler-deploy",
+    "description": "Automated VPS deployment with Ansible - Multi-server management",
+    "created": "2025-11-10T10:40:00Z",
+    "version": "1.0.0"
+  },
+  "keys": [
+    {
+      "name": "deploy_key",
+      "type": "ssh",
+      "login_password": {
+        "login": "root"
+      },
+      "ssh": {
+        "private_key": "PASTE_YOUR_PRIVATE_KEY_HERE (from /home/basthook/.ssh/Hosting)"
+      }
+    }
+  ],
+  "repositories": [
+    {
+      "name": "local-playbooks",
+      "git_url": "/ansible",
+      "git_branch": "streamlit",
+      "ssh_key": "none"
+    }
+  ],
+  "inventory": [
+    {
+      "name": "production",
+      "type": "static",
+      "inventory": "all:\n  children:\n    webservers:\n      hosts:\n        production-web-01:\n          ansible_host: YOUR_SERVER_IP_1\n          ansible_user: root\n          ansible_port: 22\n          ansible_python_interpreter: /usr/bin/python3\n          ansible_ssh_private_key_file: /home/basthook/.ssh/Hosting\n          ansible_become: yes\n          app_port: 3002\n"
+    },
+    {
+      "name": "dev",
+      "type": "static",
+      "inventory": "all:\n  children:\n    webservers:\n      hosts:\n        dev-web-01:\n          ansible_host: YOUR_DEV_IP\n          ansible_user: root\n          ansible_port: 22\n          ansible_python_interpreter: /usr/bin/python3\n          ansible_ssh_private_key_file: /home/basthook/.ssh/Hosting\n          ansible_become: yes\n          app_port: 3002\n"
+    },
+    {
+      "name": "production-multi",
+      "type": "static",
+      "inventory": "all:\n  children:\n    webservers:\n      hosts:\n        production-web-01:\n          ansible_host: YOUR_SERVER_IP_1\n          ansible_user: root\n          ansible_port: 22\n          ansible_python_interpreter: /usr/bin/python3\n          ansible_ssh_private_key_file: /home/basthook/.ssh/Hosting\n          ansible_become: yes\n          app_port: 3002\n        production-web-02:\n          ansible_host: YOUR_SERVER_IP_2\n          ansible_user: root\n          ansible_port: 22\n          ansible_python_interpreter: /usr/bin/python3\n          ansible_ssh_private_key_file: /home/basthook/.ssh/Hosting\n          ansible_become: yes\n          app_port: 3003\n    dbservers:\n      hosts:\n        production-db-01:\n          ansible_host: YOUR_DB_IP\n          ansible_user: root\n          ansible_port: 22\n          ansible_python_interpreter: /usr/bin/python3\n          ansible_ssh_private_key_file: /home/basthook/.ssh/Hosting\n          ansible_become: yes\n    monitoring:\n      hosts:\n        production-monitoring-01:\n          ansible_host: YOUR_MONITORING_IP\n          ansible_user: root\n          ansible_port: 22\n          ansible_python_interpreter: /usr/bin/python3\n          ansible_ssh_private_key_file: /home/basthook/.ssh/Hosting\n          ansible_become: yes\n      vars:\n        prometheus_targets:\n          - targets:\n              - 'YOUR_SERVER_IP_1:9100'\n              - 'YOUR_SERVER_IP_2:9100'\n              - 'YOUR_DB_IP:9100'\n            labels:\n              job: 'node_exporter'\n          - targets:\n              - 'YOUR_SERVER_IP_1:3002'\n              - 'YOUR_SERVER_IP_2:3003'\n            labels:\n              job: 'nodejs_app'\n"
+    }
+  ],
+  "environment": [
+    {
+      "name": "production-vars",
+      "json": "{\n  \"app_name\": \"myapp\",\n  \"app_repo\": \"https://github.com/Bastiblast/ansible-next-test.git\",\n  \"app_branch\": \"main\",\n  \"nodejs_version\": \"20\",\n  \"app_port\": \"3002\",\n  \"deploy_user\": \"root\",\n  \"timezone\": \"Europe/Paris\",\n  \"pm2_instances\": \"2\",\n  \"pm2_max_memory\": \"512M\",\n  \"backup_dir\": \"/var/backups\",\n  \"backup_retention_days\": \"7\"\n}"
+    },
+    {
+      "name": "dev-vars",
+      "json": "{\n  \"app_name\": \"myapp-dev\",\n  \"app_repo\": \"https://github.com/Bastiblast/ansible-next-test.git\",\n  \"app_branch\": \"develop\",\n  \"nodejs_version\": \"20\",\n  \"app_port\": \"3002\",\n  \"deploy_user\": \"root\",\n  \"timezone\": \"Europe/Paris\",\n  \"pm2_instances\": \"1\",\n  \"pm2_max_memory\": \"256M\"\n}"
+    }
+  ],
+  "templates": [
+    {
+      "name": "01 - Provision Server",
+      "description": "Initial server configuration: users, firewall, SSH, Docker",
+      "playbook": "playbooks/provision.yml",
+      "inventory": "production",
+      "environment": "production-vars",
+      "ssh_key": "deploy_key",
+      "repository": "local-playbooks",
+      "suppress_output": false,
+      "allow_cli_args": true
+    },
+    {
+      "name": "02 - Deploy Application",
+      "description": "Deploy Node.js application with PM2",
+      "playbook": "playbooks/deploy.yml",
+      "inventory": "production",
+      "environment": "production-vars",
+      "ssh_key": "deploy_key",
+      "repository": "local-playbooks",
+      "suppress_output": false,
+      "allow_cli_args": true
+    },
+    {
+      "name": "03 - Update Application",
+      "description": "Update application code and restart services",
+      "playbook": "playbooks/update.yml",
+      "inventory": "production",
+      "environment": "production-vars",
+      "ssh_key": "deploy_key",
+      "repository": "local-playbooks",
+      "suppress_output": false,
+      "allow_cli_args": true
+    },
+    {
+      "name": "04 - Rollback",
+      "description": "Rollback to previous application version",
+      "playbook": "playbooks/rollback.yml",
+      "inventory": "production",
+      "environment": "production-vars",
+      "ssh_key": "deploy_key",
+      "repository": "local-playbooks",
+      "suppress_output": false,
+      "allow_cli_args": true
+    },
+    {
+      "name": "DEV - Provision",
+      "description": "Initial server configuration for dev environment",
+      "playbook": "playbooks/provision.yml",
+      "inventory": "dev",
+      "environment": "dev-vars",
+      "ssh_key": "deploy_key",
+      "repository": "local-playbooks",
+      "suppress_output": false,
+      "allow_cli_args": true
+    },
+    {
+      "name": "DEV - Deploy",
+      "description": "Deploy to dev environment",
+      "playbook": "playbooks/deploy.yml",
+      "inventory": "dev",
+      "environment": "dev-vars",
+      "ssh_key": "deploy_key",
+      "repository": "local-playbooks",
+      "suppress_output": false,
+      "allow_cli_args": true
+    }
+  ]
+}
