@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/bastiblast/boiler-deploy/internal/inventory"
 	"github.com/bastiblast/boiler-deploy/internal/status"
@@ -100,6 +101,7 @@ func (o *Orchestrator) processQueue(servers []*inventory.Server) {
 			action := o.queue.Next()
 			if action == nil {
 				// No action, sleep briefly to avoid busy loop
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
@@ -168,22 +170,25 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 		}
 
 	case status.ActionCheck:
-		log.Printf("[ORCHESTRATOR] Executing check for %s (IP: %s, Port: %d)", action.ServerName, server.IP, server.AppPort)
-		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "")
+		log.Printf("[ORCHESTRATOR] Executing check for %s (IP: %s, Port: %d)", action.ServerName, server.IP, 80)
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Running health check...")
 		close(progressChan)
 
-		log.Printf("[ORCHESTRATOR] Running health check: curl http://%s:%d/", server.IP, server.AppPort)
-		if err := o.executor.HealthCheck(server.IP, server.AppPort); err != nil {
+		// Use port 80 for external access (nginx proxy)
+		log.Printf("[ORCHESTRATOR] Running health check: curl http://%s:80/", server.IP)
+		if err := o.executor.HealthCheck(server.IP, 80); err != nil {
 			log.Printf("[ORCHESTRATOR] Health check FAILED for %s: %v", action.ServerName, err)
 			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
-				fmt.Sprintf("Health check failed: %v", err))
+				fmt.Sprintf("Check failed: %v", err))
 		} else {
 			log.Printf("[ORCHESTRATOR] Health check PASSED for %s", action.ServerName)
 			currentStatus := o.statusMgr.GetStatus(action.ServerName)
-			if currentStatus.State == status.StateDeploying || currentStatus.State == status.StateVerifying {
+			// After successful check, mark as deployed if it was in a deployment-related state
+			if currentStatus.State == status.StateDeploying || currentStatus.State == status.StateVerifying || 
+			   currentStatus.State == status.StateProvisioned {
 				o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
 			} else {
-				log.Printf("[ORCHESTRATOR] Server %s in state %v, not updating to deployed", action.ServerName, currentStatus.State)
+				log.Printf("[ORCHESTRATOR] Server %s in state %v after check", action.ServerName, currentStatus.State)
 			}
 		}
 	}

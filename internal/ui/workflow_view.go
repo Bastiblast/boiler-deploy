@@ -187,7 +187,26 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			log.Println("[WORKFLOW] No servers selected for validation")
 			return wv, nil
 		}
-		return wv, wv.validateSelectedCmd()
+		
+		// Run validation in goroutine to avoid blocking
+		go func() {
+			log.Println("[WORKFLOW] Validation goroutine started")
+			for i, server := range selected {
+				log.Printf("[WORKFLOW] Validating server %d/%d: %s", i+1, len(selected), server.Name)
+				checks := wv.statusMgr.ValidateServer(server)
+				log.Printf("[WORKFLOW] Validation checks for %s: IP=%v SSH=%v Port=%v Fields=%v", 
+					server.Name, checks.IPValid, checks.SSHKeyExists, checks.PortValid, checks.AllFieldsFilled)
+				
+				if err := wv.statusMgr.UpdateReadyChecks(server.Name, checks); err != nil {
+					log.Printf("[WORKFLOW] Error updating status for %s: %v", server.Name, err)
+				} else {
+					log.Printf("[WORKFLOW] Successfully updated status for %s", server.Name)
+				}
+			}
+			log.Println("[WORKFLOW] Validation complete")
+		}()
+		
+		return wv, nil
 
 	case "p":
 		wv.provisionSelected()
@@ -203,6 +222,13 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			log.Println("[WORKFLOW] No servers selected for check")
 			return wv, nil
 		}
+		
+		// Update status to Verifying immediately for visual feedback
+		for _, name := range selected {
+			log.Printf("[WORKFLOW] Setting %s to Verifying state", name)
+			wv.statusMgr.UpdateStatus(name, status.StateVerifying, status.ActionCheck, "Starting check...")
+		}
+		
 		wv.checkSelected()
 
 	case "l":
@@ -242,29 +268,7 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return wv, nil
 }
 
-func (wv *WorkflowView) validateSelectedCmd() tea.Cmd {
-	return func() tea.Msg {
-		log.Println("[WORKFLOW] Validation command executing")
-		selected := wv.getSelectedServers()
-		log.Printf("[WORKFLOW] Got %d servers to validate", len(selected))
-		
-		for i, server := range selected {
-			log.Printf("[WORKFLOW] Validating server %d/%d: %s", i+1, len(selected), server.Name)
-			checks := wv.statusMgr.ValidateServer(server)
-			log.Printf("[WORKFLOW] Validation checks for %s: IP=%v SSH=%v Port=%v Fields=%v", 
-				server.Name, checks.IPValid, checks.SSHKeyExists, checks.PortValid, checks.AllFieldsFilled)
-			
-			if err := wv.statusMgr.UpdateReadyChecks(server.Name, checks); err != nil {
-				log.Printf("[WORKFLOW] Error updating status for %s: %v", server.Name, err)
-			} else {
-				log.Printf("[WORKFLOW] Successfully updated status for %s", server.Name)
-			}
-		}
-		
-		log.Println("[WORKFLOW] Validation complete, sending message")
-		return validationCompleteMsg{}
-	}
-}
+
 
 func (wv *WorkflowView) provisionSelected() {
 	names := wv.getSelectedServerNames()

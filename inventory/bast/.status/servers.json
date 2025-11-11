@@ -1,11 +1,11 @@
 {
   "bast-web-01": {
     "name": "bast-web-01",
-    "state": "not_ready",
-    "last_update": "2025-11-11T21:00:25.258211822+01:00",
+    "state": "ready",
+    "last_update": "2025-11-11T21:10:08.837386152+01:00",
     "ready_checks": {
       "ip_valid": true,
-      "ssh_key_exists": false,
+      "ssh_key_exists": true,
       "port_valid": true,
       "all_fields_filled": true
     }
