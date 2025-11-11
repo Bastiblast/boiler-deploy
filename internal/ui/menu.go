@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/bastiblast/boiler-deploy/internal/storage"
 )
 
 type MainMenu struct {
@@ -14,6 +15,21 @@ type MainMenu struct {
 }
 
 func NewMainMenu() MainMenu {
+	// Load actual environments from storage
+	stor := storage.NewStorage(".")
+	envList, _ := stor.ListEnvironments()
+	
+	envDisplay := []string{}
+	for _, env := range envList {
+		// Load to count servers
+		envData, err := stor.LoadEnvironment(env)
+		if err == nil {
+			envDisplay = append(envDisplay, fmt.Sprintf("%s (%d servers)", env, len(envData.Servers)))
+		} else {
+			envDisplay = append(envDisplay, env)
+		}
+	}
+	
 	return MainMenu{
 		choices: []string{
 			"Create new environment",
@@ -21,11 +37,7 @@ func NewMainMenu() MainMenu {
 			"Validate all inventories",
 			"Quit",
 		},
-		environments: []string{
-			"production (3 servers)",
-			"dev (1 server)",
-			"staging (2 servers)",
-		},
+		environments: envDisplay,
 	}
 }
 
@@ -57,8 +69,8 @@ func (m MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Create new environment
 				return NewEnvironmentForm(), nil
 			case 1:
-				// Manage environment - TODO
-				return m, nil
+				// Manage environment
+				return NewEnvironmentSelector(), nil
 			case 2:
 				// Validate - TODO
 				return m, nil
