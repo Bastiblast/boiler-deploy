@@ -113,29 +113,37 @@ func (f EnvironmentForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			
 		case "enter":
-			// Submit form
-			maxIndex := len(f.inputs) + 3
-			if f.monoServer {
-				maxIndex++
-			}
-			if f.focusIndex == maxIndex { // On last element
-				env, err := f.buildEnvironment()
-				if err != nil {
-					f.err = err
-					return f, nil
+			// If on an input field, don't submit - let the input handle it
+			if f.focusIndex == 0 || (f.monoServer && f.focusIndex == 2) {
+				// Let the input field handle enter (move to next field)
+				f.focusIndex++
+				maxIndex := len(f.inputs) + 3
+				if f.monoServer {
+					maxIndex++
 				}
-				
-				// Save environment
-				if err := f.storage.SaveEnvironment(*env); err != nil {
-					f.err = fmt.Errorf("failed to save: %v", err)
-					return f, nil
+				if f.focusIndex > maxIndex {
+					f.focusIndex = 0
 				}
-				
-				f.done = true
-				f.environment = env
-				// Return to menu
-				return NewMainMenu(), nil
+				return f, f.updateFocus()
 			}
+			
+			// Otherwise submit form
+			env, err := f.buildEnvironment()
+			if err != nil {
+				f.err = err
+				return f, nil
+			}
+			
+			// Save environment
+			if err := f.storage.SaveEnvironment(*env); err != nil {
+				f.err = fmt.Errorf("failed to save: %v", err)
+				return f, nil
+			}
+			
+			f.done = true
+			f.environment = env
+			// Return to menu
+			return NewMainMenu(), nil
 		}
 	}
 	
