@@ -45,6 +45,10 @@ type Server struct {
 	GitRepo       string `yaml:"git_repo,omitempty"`
 	GitBranch     string `yaml:"git_branch,omitempty"`
 	NodeVersion   string `yaml:"node_version,omitempty"`
+	
+	// SSH test status (not saved to YAML)
+	SSHTested     bool   `yaml:"-"`
+	SSHStatus     string `yaml:"-"`
 }
 
 // ValidationResult holds validation results

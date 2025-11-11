@@ -7,6 +7,7 @@ A modern, interactive Terminal User Interface (TUI) for managing Ansible invento
 - ✅ **Interactive TUI** - Navigate with keyboard, no mouse required
 - ✅ **Environment Management** - Create and manage multiple environments (prod, dev, staging)
 - ✅ **Server Configuration** - Add, edit, and remove servers with validation
+- ✅ **SSH Testing** - Test SSH connectivity to servers before deployment
 - ✅ **Auto-generation** - Automatically generates Ansible-compatible `hosts.yml` and `group_vars/`
 - ✅ **Validation** - Real-time IP, port, and configuration validation
 - ✅ **Lightweight** - Single binary, no dependencies (~5MB)
@@ -52,6 +53,15 @@ inventory-manager
 [Space]         - Toggle checkbox
 [Esc]           - Go back / Cancel
 [q]             - Quit
+
+Server Management:
+[a]             - Add new server
+[e]             - Edit selected server
+[d]             - Delete selected server
+[t]             - Test SSH connection (single server)
+[T]             - Test all SSH connections
+[s]             - Save environment
+[g]             - Generate YAML preview
 ```
 
 ### Create an Environment
@@ -66,6 +76,28 @@ inventory-manager
    - Application port
 4. Toggle services (Web, Database, Monitoring)
 5. Press Enter to create
+
+### Test SSH Connections
+
+Before deploying, you can test SSH connectivity to your servers:
+
+1. Navigate to "Manage Environments" → Select environment
+2. Use arrow keys to select a server
+3. Press `t` to test the selected server's SSH connection
+4. Or press `T` to test all servers at once
+
+The SSH test will:
+- ✅ Verify SSH key authentication
+- ✅ Test network connectivity
+- ✅ Execute a test command on the remote server
+- ✅ Display connection latency
+- ✅ Show detailed error messages if connection fails
+
+**SSH Test Results:**
+- `✓ Connected successfully (XXms)` - SSH connection works
+- `✗ Connection timeout` - Server is unreachable or firewall blocking
+- `✗ Cannot read SSH key` - SSH key file not found or invalid path
+- `✗ Connection failed` - Authentication or other SSH errors
 
 ### Generated Files
 

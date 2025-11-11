@@ -7,26 +7,36 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/bastiblast/boiler-deploy/internal/inventory"
+	"github.com/bastiblast/boiler-deploy/internal/ssh"
 	"github.com/bastiblast/boiler-deploy/internal/storage"
 )
 
 type ServerManager struct {
-	environment      *inventory.Environment
-	cursor           int
-	storage          *storage.Storage
-	message          string
-	messageType      string // "success", "error", "info"
-	confirmingDelete bool
-	confirmIndex     int
+	environment *inventory.Environment
+	cursor      int
+	storage     *storage.Storage
+	message     string
+	messageType string // "success", "error", "info"
+	testing     bool   // Is SSH test in progress
+	testingAll  bool   // Is testing all servers
+}
+
+// SSH test result message
+type sshTestResultMsg struct {
+	index  int
+	result ssh.TestResult
+}
+
+// Batch SSH test results
+type sshTestAllResultsMsg struct {
+	results []sshTestResultMsg
 }
 
 func NewServerManager(env *inventory.Environment) ServerManager {
 	return ServerManager{
-		environment:      env,
-		cursor:           0,
-		storage:          storage.NewStorage("."),
-		confirmingDelete: false,
-		confirmIndex:     0,
+		environment: env,
+		cursor:      0,
+		storage:     storage.NewStorage("."),
 	}
 }
 
@@ -36,127 +46,160 @@ func (m ServerManager) Init() tea.Cmd {
 
 func (m ServerManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case sshTestAllResultsMsg:
+		// Handle batch SSH test results
+		m.testing = false
+		m.testingAll = false
+		
+		passed := 0
+		failed := 0
+		
+		for _, result := range msg.results {
+			if result.index >= 0 && result.index < len(m.environment.Servers) {
+				m.environment.Servers[result.index].SSHTested = true
+				if result.result.Success {
+					m.environment.Servers[result.index].SSHStatus = "✓ " + result.result.Message
+					passed++
+				} else {
+					m.environment.Servers[result.index].SSHStatus = "✗ " + result.result.Message
+					failed++
+				}
+			}
+		}
+		
+		if failed == 0 {
+			m.message = fmt.Sprintf("✓ All servers tested successfully (%d/%d)", passed, passed+failed)
+			m.messageType = "success"
+		} else {
+			m.message = fmt.Sprintf("⚠ Tests completed: %d passed, %d failed", passed, failed)
+			m.messageType = "error"
+		}
+		
+		return m, nil
+	
+	case sshTestResultMsg:
+		// Handle single SSH test result
+		m.testing = false
+		if msg.index >= 0 && msg.index < len(m.environment.Servers) {
+			m.environment.Servers[msg.index].SSHTested = true
+			if msg.result.Success {
+				m.environment.Servers[msg.index].SSHStatus = "✓ " + msg.result.Message
+				m.message = fmt.Sprintf("✓ SSH test passed for '%s'", m.environment.Servers[msg.index].Name)
+				m.messageType = "success"
+			} else {
+				m.environment.Servers[msg.index].SSHStatus = "✗ " + msg.result.Message
+				m.message = fmt.Sprintf("✗ SSH test failed for '%s': %s", 
+					m.environment.Servers[msg.index].Name, msg.result.Message)
+				m.messageType = "error"
+			}
+		}
+		return m, nil
+	
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
-			if m.confirmingDelete {
-				// Cancel confirmation
-				m.confirmingDelete = false
-				m.message = ""
-				return m, nil
-			}
-			// Return to main menu
-			return NewMainMenu(), nil
+			// Return to environment selector
+			return NewEnvironmentSelector(), nil
 
 		case "up", "k":
-			if m.confirmingDelete {
-				if m.confirmIndex > 0 {
-					m.confirmIndex--
-				}
-			} else {
-				if m.cursor > 0 {
-					m.cursor--
-				}
+			if m.cursor > 0 {
+				m.cursor--
 			}
 
 		case "down", "j":
-			if m.confirmingDelete {
-				if m.confirmIndex < 1 {
-					m.confirmIndex++
-				}
-			} else {
-				if m.cursor < len(m.environment.Servers) {
-					m.cursor++
-				}
+			if m.cursor < len(m.environment.Servers) {
+				m.cursor++
 			}
 
 		case "a":
-			if !m.confirmingDelete {
-				// Add new server
-				return NewServerForm(m.environment), nil
-			}
+			// Add new server
+			return NewServerForm(m.environment), nil
 
 		case "e":
-			if !m.confirmingDelete {
-				// Edit selected server
-				if m.cursor < len(m.environment.Servers) {
-					return NewServerForm(m.environment, &m.environment.Servers[m.cursor]), nil
-				}
+			// Edit selected server
+			if m.cursor < len(m.environment.Servers) {
+				return NewServerForm(m.environment, &m.environment.Servers[m.cursor]), nil
 			}
 
 		case "d":
-			if !m.confirmingDelete {
-				// Delete selected server
-				if m.cursor < len(m.environment.Servers) && len(m.environment.Servers) > 0 {
-					serverName := m.environment.Servers[m.cursor].Name
-					// Remove server
-					m.environment.Servers = append(
-						m.environment.Servers[:m.cursor],
-						m.environment.Servers[m.cursor+1:]...,
-					)
-					
-					// Save
-					if err := m.storage.SaveEnvironment(*m.environment); err != nil {
-						m.message = fmt.Sprintf("Failed to save: %v", err)
-						m.messageType = "error"
-					} else {
-						m.message = fmt.Sprintf("✓ Server '%s' deleted", serverName)
-						m.messageType = "success"
-					}
-					
-					// Adjust cursor
-					if m.cursor >= len(m.environment.Servers) && m.cursor > 0 {
-						m.cursor--
-					}
-				}
-			}
-		
-		case "x":
-			if !m.confirmingDelete {
-				// Delete environment
-				m.confirmingDelete = true
-				m.confirmIndex = 1 // Default to "No"
-			}
-		
-		case "enter":
-			if m.confirmingDelete {
-				if m.confirmIndex == 0 {
-					// Yes - delete environment
-					envName := m.environment.Name
-					if err := m.storage.DeleteEnvironment(envName); err != nil {
-						m.message = fmt.Sprintf("Failed to delete: %v", err)
-						m.messageType = "error"
-						m.confirmingDelete = false
-						return m, nil
-					}
-					// Return to main menu after successful deletion
-					return NewMainMenu(), nil
-				} else {
-					// No - cancel
-					m.confirmingDelete = false
-					m.message = ""
-				}
-			}
-
-		case "s":
-			if !m.confirmingDelete {
-				// Save environment
+			// Delete selected server
+			if m.cursor < len(m.environment.Servers) && len(m.environment.Servers) > 0 {
+				serverName := m.environment.Servers[m.cursor].Name
+				// Remove server
+				m.environment.Servers = append(
+					m.environment.Servers[:m.cursor],
+					m.environment.Servers[m.cursor+1:]...,
+				)
+				
+				// Save
 				if err := m.storage.SaveEnvironment(*m.environment); err != nil {
 					m.message = fmt.Sprintf("Failed to save: %v", err)
 					m.messageType = "error"
 				} else {
-					m.message = "✓ Environment saved"
+					m.message = fmt.Sprintf("✓ Server '%s' deleted", serverName)
 					m.messageType = "success"
+				}
+				
+				// Adjust cursor
+				if m.cursor >= len(m.environment.Servers) && m.cursor > 0 {
+					m.cursor--
 				}
 			}
 
+		case "s":
+			// Save environment
+			if err := m.storage.SaveEnvironment(*m.environment); err != nil {
+				m.message = fmt.Sprintf("Failed to save: %v", err)
+				m.messageType = "error"
+			} else {
+				m.message = "✓ Environment saved"
+				m.messageType = "success"
+			}
+
 		case "g":
-			if !m.confirmingDelete {
-				// Generate and show YAML
-				generator := inventory.NewGenerator()
-				summary := generator.GenerateEnvironmentSummary(*m.environment)
-				m.message = summary
+			// Generate and show YAML
+			generator := inventory.NewGenerator()
+			summary := generator.GenerateEnvironmentSummary(*m.environment)
+			m.message = summary
+			m.messageType = "info"
+		
+		case "t":
+			// Test SSH connection for selected server
+			if m.cursor < len(m.environment.Servers) && !m.testing {
+				m.testing = true
+				m.message = "Testing SSH connection..."
 				m.messageType = "info"
+				
+				server := m.environment.Servers[m.cursor]
+				idx := m.cursor
+				
+				// Run SSH test asynchronously
+				return m, func() tea.Msg {
+					result := ssh.TestConnection(server.IP, server.Port, server.SSHUser, server.SSHKeyPath)
+					return sshTestResultMsg{index: idx, result: result}
+				}
+			}
+		
+		case "T":
+			// Test all servers
+			if !m.testing && len(m.environment.Servers) > 0 {
+				m.testing = true
+				m.testingAll = true
+				m.message = "Testing all SSH connections..."
+				m.messageType = "info"
+				
+				// Capture environment servers for the closure
+				servers := m.environment.Servers
+				
+				// Test all servers sequentially
+				return m, func() tea.Msg {
+					var results []sshTestResultMsg
+					for i, server := range servers {
+						result := ssh.TestConnection(server.IP, server.Port, server.SSHUser, server.SSHKeyPath)
+						results = append(results, sshTestResultMsg{index: i, result: result})
+					}
+					return sshTestAllResultsMsg{results: results}
+				}
 			}
 		}
 	}
@@ -168,34 +211,15 @@ func (m ServerManager) View() string {
 	var b strings.Builder
 
 	title := fmt.Sprintf("🖥️  Manage Environment: %s", m.environment.Name)
+	if m.testing {
+		if m.testingAll {
+			title += " [Testing all servers...]"
+		} else {
+			title += " [Testing SSH...]"
+		}
+	}
 	b.WriteString(titleStyle.Render(title))
 	b.WriteString("\n\n")
-	
-	// Show confirmation dialog if deleting environment
-	if m.confirmingDelete {
-		b.WriteString(errorStyle.Render(fmt.Sprintf("⚠️  Delete environment '%s'?", m.environment.Name)))
-		b.WriteString("\n\n")
-		b.WriteString("This will permanently delete:\n")
-		b.WriteString(fmt.Sprintf("  • inventory/%s/\n", m.environment.Name))
-		b.WriteString(fmt.Sprintf("  • All %d server(s) and configurations\n\n", len(m.environment.Servers)))
-		b.WriteString("Are you sure?\n\n")
-		
-		// Confirmation choices
-		choices := []string{"Yes, delete environment", "No, cancel"}
-		for i, choice := range choices {
-			cursor := "  "
-			style := normalItemStyle
-			if m.confirmIndex == i {
-				cursor = "▶ "
-				style = selectedItemStyle
-			}
-			b.WriteString(style.Render(cursor+choice) + "\n")
-		}
-		
-		b.WriteString("\n")
-		b.WriteString(helpStyle.Render("[↑↓] Select  [Enter] Confirm  [Esc] Cancel"))
-		return lipgloss.NewStyle().Margin(1, 2).Render(b.String())
-	}
 
 	// Services enabled
 	b.WriteString("Services: ")
@@ -236,7 +260,9 @@ func (m ServerManager) View() string {
 			}
 
 			status := "⚠ Not tested"
-			// TODO: Add SSH test status here
+			if server.SSHTested {
+				status = server.SSHStatus
+			}
 
 			row := fmt.Sprintf("%s%-18s %-15s %-7d %-7s %s",
 				cursor,
@@ -269,8 +295,11 @@ func (m ServerManager) View() string {
 
 	// Help
 	b.WriteString("\n")
-	helpText := "[a] Add  [e] Edit  [d] Delete Server  [x] Delete Environment  [s] Save  [g] Generate  [Esc] Back"
-	b.WriteString(helpStyle.Render(helpText))
+	helpLine1 := "[a] Add  [e] Edit  [d] Delete  [t] Test SSH  [T] Test All"
+	helpLine2 := "[s] Save  [g] Generate  [Esc] Back"
+	b.WriteString(helpStyle.Render(helpLine1))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render(helpLine2))
 
 	return lipgloss.NewStyle().Margin(1, 2).Render(b.String())
 }
