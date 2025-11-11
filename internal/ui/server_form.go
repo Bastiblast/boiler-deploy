@@ -383,17 +383,16 @@ func (f ServerForm) View() string {
 	}
 
 	// Server type selector
-	serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
 	typeSelectorPos := 5
 	if serverType == "web" {
 		typeSelectorPos = 9
 	}
 	
-	cursor := "  "
+	typeCursor := "  "
 	if f.focusIndex == typeSelectorPos {
-		cursor = "▶ "
+		typeCursor = "▶ "
 	}
-	b.WriteString(cursor + "Server type:\n  ")
+	b.WriteString(typeCursor + "Server type:\n  ")
 
 	types := []string{"Web", "Database", "Monitoring"}
 	for i, t := range types {
