@@ -15,6 +15,7 @@ type EnvironmentForm struct {
 	inputs      []textinput.Model
 	focusIndex  int
 	checkboxes  map[string]bool
+	monoServer  bool
 	err         error
 	validator   *inventory.Validator
 	storage     *storage.Storage
@@ -23,14 +24,19 @@ type EnvironmentForm struct {
 }
 
 func NewEnvironmentForm() EnvironmentForm {
-	// Initialize text inputs - only environment name now
-	inputs := make([]textinput.Model, 1)
+	// Initialize text inputs - name + optional mono IP
+	inputs := make([]textinput.Model, 2)
 	
 	// Environment name
 	inputs[0] = textinput.New()
 	inputs[0].Placeholder = "production"
 	inputs[0].Focus()
 	inputs[0].Width = 40
+	
+	// Mono server IP (only shown if mono_server is checked)
+	inputs[1] = textinput.New()
+	inputs[1].Placeholder = "192.168.1.10"
+	inputs[1].Width = 20
 	
 	// Get current working directory for storage
 	stor := storage.NewStorage(".")
@@ -42,8 +48,9 @@ func NewEnvironmentForm() EnvironmentForm {
 			"database":   false,
 			"monitoring": false,
 		},
-		validator: inventory.NewValidator(),
-		storage:   stor,
+		monoServer: false,
+		validator:  inventory.NewValidator(),
+		storage:    stor,
 	}
 }
 
@@ -61,7 +68,12 @@ func (f EnvironmentForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 		case "tab", "down":
 			f.focusIndex++
-			if f.focusIndex > len(f.inputs)+2 { // inputs + 3 checkboxes
+			// Calculate max index: inputs + mono checkbox + 3 service checkboxes
+			maxIndex := len(f.inputs) + 3
+			if f.monoServer {
+				maxIndex++ // Add 1 for IP input
+			}
+			if f.focusIndex > maxIndex {
 				f.focusIndex = 0
 			}
 			return f, f.updateFocus()
@@ -69,16 +81,32 @@ func (f EnvironmentForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab", "up":
 			f.focusIndex--
 			if f.focusIndex < 0 {
-				f.focusIndex = len(f.inputs) + 2
+				maxIndex := len(f.inputs) + 3
+				if f.monoServer {
+					maxIndex++
+				}
+				f.focusIndex = maxIndex
 			}
 			return f, f.updateFocus()
 			
 		case " ":
 			// Toggle checkbox
-			if f.focusIndex >= len(f.inputs) {
-				checkboxIndex := f.focusIndex - len(f.inputs)
+			nameInputs := 1 // Just name
+			monoCheckboxPos := nameInputs
+			
+			if f.focusIndex == monoCheckboxPos {
+				// Toggle mono server
+				f.monoServer = !f.monoServer
+			} else if f.focusIndex > monoCheckboxPos {
+				// Service checkboxes
+				offset := monoCheckboxPos + 1
+				if f.monoServer {
+					offset++ // Skip IP input
+				}
+				
+				checkboxIndex := f.focusIndex - offset
 				keys := []string{"web", "database", "monitoring"}
-				if checkboxIndex < len(keys) {
+				if checkboxIndex >= 0 && checkboxIndex < len(keys) {
 					key := keys[checkboxIndex]
 					f.checkboxes[key] = !f.checkboxes[key]
 				}
@@ -86,7 +114,11 @@ func (f EnvironmentForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 		case "enter":
 			// Submit form
-			if f.focusIndex == len(f.inputs)+2 { // On last element
+			maxIndex := len(f.inputs) + 3
+			if f.monoServer {
+				maxIndex++
+			}
+			if f.focusIndex == maxIndex { // On last element
 				env, err := f.buildEnvironment()
 				if err != nil {
 					f.err = err
@@ -108,9 +140,15 @@ func (f EnvironmentForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	
 	// Update focused input
-	if f.focusIndex < len(f.inputs) {
+	if f.focusIndex == 0 {
+		// Name input
 		var cmd tea.Cmd
-		f.inputs[f.focusIndex], cmd = f.inputs[f.focusIndex].Update(msg)
+		f.inputs[0], cmd = f.inputs[0].Update(msg)
+		return f, cmd
+	} else if f.monoServer && f.focusIndex == 2 {
+		// IP input (only if mono server is enabled)
+		var cmd tea.Cmd
+		f.inputs[1], cmd = f.inputs[1].Update(msg)
 		return f, cmd
 	}
 	
@@ -147,6 +185,18 @@ func (f *EnvironmentForm) buildEnvironment() (*inventory.Environment, error) {
 		return nil, fmt.Errorf("environment '%s' already exists", name)
 	}
 	
+	monoIP := ""
+	if f.monoServer {
+		monoIP = f.inputs[1].Value()
+		if monoIP == "" {
+			return nil, fmt.Errorf("mono server IP is required")
+		}
+		// Validate IP
+		if err := f.validator.ValidateIP(monoIP); err != nil {
+			return nil, fmt.Errorf("invalid mono server IP: %v", err)
+		}
+	}
+	
 	env := &inventory.Environment{
 		Name: name,
 		Services: inventory.Services{
@@ -158,7 +208,9 @@ func (f *EnvironmentForm) buildEnvironment() (*inventory.Environment, error) {
 			DeployUser: "root",
 			Timezone:   "Europe/Paris",
 		},
-		Servers: []inventory.Server{},
+		Servers:    []inventory.Server{},
+		MonoServer: f.monoServer,
+		MonoIP:     monoIP,
 	}
 	
 	return env, nil
@@ -170,17 +222,44 @@ func (f EnvironmentForm) View() string {
 	b.WriteString(titleStyle.Render("📝 Create New Environment"))
 	b.WriteString("\n\n")
 	
-	// Text input - only environment name
+	// Environment name input
 	cursor := "  "
 	if f.focusIndex == 0 {
 		cursor = "▶ "
 	}
 	b.WriteString(fmt.Sprintf("%sEnvironment name:\n  %s\n\n", cursor, f.inputs[0].View()))
 	
-	// Checkboxes
+	// Mono server checkbox
+	monoCheckboxPos := 1
+	cursor = "  "
+	if f.focusIndex == monoCheckboxPos {
+		cursor = "▶ "
+	}
+	monoCheck := " "
+	if f.monoServer {
+		monoCheck = "✓"
+	}
+	b.WriteString(fmt.Sprintf("%s[%s] Mono server (all services on same IP)\n\n", cursor, monoCheck))
+	
+	// Mono IP input (only if mono server is enabled)
+	if f.monoServer {
+		cursor = "  "
+		if f.focusIndex == 2 {
+			cursor = "▶ "
+		}
+		b.WriteString(fmt.Sprintf("%sServer IP:\n  %s\n\n", cursor, f.inputs[1].View()))
+	}
+	
+	// Service checkboxes
 	b.WriteString("\nServices to enable:\n")
 	checkboxLabels := []string{"Web servers", "Database servers", "Monitoring"}
 	checkboxKeys := []string{"web", "database", "monitoring"}
+	
+	// Calculate offset for service checkboxes
+	offset := 2 // name + mono checkbox
+	if f.monoServer {
+		offset++ // + IP input
+	}
 	
 	for i, label := range checkboxLabels {
 		cursor := "  "
@@ -188,7 +267,7 @@ func (f EnvironmentForm) View() string {
 		if f.checkboxes[checkboxKeys[i]] {
 			checkbox = "[✓]"
 		}
-		if f.focusIndex == len(f.inputs)+i {
+		if f.focusIndex == offset+i {
 			cursor = "▶ "
 		}
 		b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, checkbox, label))

@@ -33,9 +33,14 @@ func NewServerForm(env *inventory.Environment, editServer ...*inventory.Server) 
 	inputs[0].Width = 40
 	inputs[0].Focus()
 
-	// IP address
+	// IP address - use mono IP if available
 	inputs[1] = textinput.New()
-	inputs[1].Placeholder = "192.168.1.10"
+	if env.MonoServer && env.MonoIP != "" {
+		inputs[1].Placeholder = env.MonoIP
+		inputs[1].SetValue(env.MonoIP)
+	} else {
+		inputs[1].Placeholder = "192.168.1.10"
+	}
 	inputs[1].Width = 20
 
 	// SSH Port

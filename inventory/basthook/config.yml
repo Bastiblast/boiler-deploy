@@ -1,0 +1,14 @@
+name: basthook
+services:
+    web: true
+    database: true
+    monitoring: true
+config:
+    app_name: ""
+    app_repo: ""
+    app_branch: ""
+    nodejs_version: ""
+    app_port: ""
+    deploy_user: root
+    timezone: Europe/Paris
+servers: []
