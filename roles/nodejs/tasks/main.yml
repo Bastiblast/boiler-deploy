@@ -14,18 +14,17 @@
     update_cache: yes
 
 - name: Install PM2 and pnpm globally
-  npm:
-    name: "{{ item }}"
-    global: yes
-    state: present
+  shell: /usr/bin/npm install -g {{ item }}
   loop:
     - pm2
     - pnpm
+  ignore_errors: yes
 
 - name: Setup PM2 startup script
   shell: pm2 startup systemd -u {{ deploy_user }} --hp /home/{{ deploy_user }}
   args:
     creates: /etc/systemd/system/pm2-{{ deploy_user }}.service
+  ignore_errors: yes
 
 - name: Create application directories
   file:

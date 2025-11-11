@@ -11,14 +11,16 @@ import (
 )
 
 type Orchestrator struct {
-	statusMgr   *status.Manager
-	queue       *Queue
-	executor    *Executor
-	environment string
-	mu          sync.RWMutex
-	running     bool
-	stopChan    chan struct{}
-	progressCb  func(serverName, message string)
+	statusMgr      *status.Manager
+	queue          *Queue
+	executor       *Executor
+	scriptExecutor *ScriptExecutor
+	environment    string
+	mu             sync.RWMutex
+	running        bool
+	stopChan       chan struct{}
+	progressCb     func(serverName, message string)
+	useScript      bool // Use deploy.sh script instead of ansible directly
 }
 
 func NewOrchestrator(environment string, statusMgr *status.Manager) (*Orchestrator, error) {
@@ -28,11 +30,13 @@ func NewOrchestrator(environment string, statusMgr *status.Manager) (*Orchestrat
 	}
 
 	return &Orchestrator{
-		statusMgr:   statusMgr,
-		queue:       queue,
-		executor:    NewExecutor(environment),
-		environment: environment,
-		stopChan:    make(chan struct{}),
+		statusMgr:      statusMgr,
+		queue:          queue,
+		executor:       NewExecutor(environment),
+		scriptExecutor: NewScriptExecutor(environment),
+		environment:    environment,
+		stopChan:       make(chan struct{}),
+		useScript:      true, // Use deploy.sh by default
 	}, nil
 }
 
@@ -149,8 +153,15 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 
 	switch action.Action {
 	case status.ActionProvision:
-		o.statusMgr.UpdateStatus(action.ServerName, status.StateProvisioning, action.Action, "")
-		result, err = o.executor.Provision(action.ServerName, progressChan)
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateProvisioning, action.Action, "Starting...")
+		
+		if o.useScript {
+			log.Printf("[ORCHESTRATOR] Using deploy.sh for provision")
+			result, err = o.scriptExecutor.RunAction("provision", action.ServerName, progressChan)
+		} else {
+			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly")
+			result, err = o.executor.Provision(action.ServerName, progressChan)
+		}
 		close(progressChan)
 
 		if err != nil || !result.Success {
@@ -167,16 +178,23 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 			return
 		}
 
-		o.statusMgr.UpdateStatus(action.ServerName, status.StateDeploying, action.Action, "")
-		result, err = o.executor.Deploy(action.ServerName, progressChan)
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateDeploying, action.Action, "Starting...")
+		
+		if o.useScript {
+			log.Printf("[ORCHESTRATOR] Using deploy.sh for deploy")
+			result, err = o.scriptExecutor.RunAction("deploy", action.ServerName, progressChan)
+		} else {
+			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly")
+			result, err = o.executor.Deploy(action.ServerName, progressChan)
+		}
 		close(progressChan)
 
 		if err != nil || !result.Success {
 			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, result.ErrorMessage)
 		} else {
-			o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "")
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Checking...")
 			
-			if err := o.executor.HealthCheck(server.IP, server.AppPort); err != nil {
+			if err := o.executor.HealthCheck(server.IP, 80); err != nil {
 				o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
 					fmt.Sprintf("Health check failed: %v", err))
 			} else {
@@ -187,7 +205,6 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 	case status.ActionCheck:
 		log.Printf("[ORCHESTRATOR] Starting health check for %s", action.ServerName)
 		
-		// Only check servers that have been deployed
 		currentStatus := o.statusMgr.GetStatus(action.ServerName)
 		if currentStatus.State != status.StateDeployed && currentStatus.State != status.StateProvisioned {
 			log.Printf("[ORCHESTRATOR] Skipping check - server %s not deployed yet (state: %s)", action.ServerName, currentStatus.State)
@@ -200,11 +217,7 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Running health check...")
 		close(progressChan)
 
-		// Determine which port to check based on deployment state
-		// - After deployment: check Nginx proxy on port 80
-		// - For localhost testing: check the mapped HTTP port (usually 8080, but we check 80 inside container)
 		checkPort := 80
-		
 		log.Printf("[ORCHESTRATOR] Checking HTTP on %s:%d", server.IP, checkPort)
 		
 		if err := o.executor.HealthCheck(server.IP, checkPort); err != nil {

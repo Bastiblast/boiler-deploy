@@ -14,9 +14,17 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Parse arguments - syntax: ./deploy.sh ACTION ENVIRONMENT
+# Parse arguments - syntax: ./deploy.sh ACTION ENVIRONMENT [--yes]
 ACTION=${1:-deploy}
 ENVIRONMENT=${2:-production}
+AUTO_YES=${3:-}
+
+# Auto-yes mode: skip confirmations (for automation/TUI)
+if [ "$AUTO_YES" = "--yes" ] || [ ! -t 0 ]; then
+    AUTO_CONFIRM=true
+else
+    AUTO_CONFIRM=false
+fi
 
 # Available environments (auto-detected from inventory directory)
 VALID_ENVS=$(ls -d inventory/*/ 2>/dev/null | xargs -n 1 basename | tr '\n' ' ')
@@ -123,17 +131,19 @@ check_ssh_config() {
     # Check if user has SSH config with old 'hostinger' references
     if [ -f ~/.ssh/config ]; then
         if grep -qi "host.*hostinger" ~/.ssh/config 2>/dev/null; then
-            echo ""
-            print_warning "⚠️  SSH Config Update Required"
-            echo ""
-            echo "Your ~/.ssh/config contains references to 'hostinger'."
-            echo "The environment has been renamed to 'production'."
-            echo ""
-            echo "Please update your SSH config file:"
-            echo "  • Change 'Host hostinger' → 'Host production'"
-            echo "  • Or add an alias: 'Host production hostinger'"
-            echo ""
-            read -p "Press Enter to continue..." -r
+            if [ "$AUTO_CONFIRM" = false ]; then
+                echo ""
+                print_warning "⚠️  SSH Config Update Required"
+                echo ""
+                echo "Your ~/.ssh/config contains references to 'hostinger'."
+                echo "The environment has been renamed to 'production'."
+                echo ""
+                echo "Please update your SSH config file:"
+                echo "  • Change 'Host hostinger' → 'Host production'"
+                echo "  • Or add an alias: 'Host production hostinger'"
+                echo ""
+                read -p "Press Enter to continue..." -r
+            fi
         fi
     fi
 }
@@ -153,16 +163,20 @@ check_connectivity() {
         fi
     else
         print_warning "Cannot connect to servers"
-        echo ""
-        echo "Troubleshooting:"
-        echo "  1. Check SSH access to your VPS"
-        echo "  2. Verify inventory file: $inventory_path/hosts.yml"
-        echo "  3. Test manually: ssh user@your-vps-ip"
-        echo ""
-        read -p "Continue anyway? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
+        if [ "$AUTO_CONFIRM" = false ]; then
+            echo ""
+            echo "Troubleshooting:"
+            echo "  1. Check SSH access to your VPS"
+            echo "  2. Verify inventory file: $inventory_path/hosts.yml"
+            echo "  3. Test manually: ssh user@your-vps-ip"
+            echo ""
+            read -p "Continue anyway? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        else
+            print_info "Auto-confirm mode: continuing despite connection issues"
         fi
     fi
 }
@@ -171,14 +185,19 @@ confirm_action() {
     local action_name="$1"
     local warning_msg="$2"
     
-    echo ""
-    print_warning "$warning_msg"
-    echo ""
-    read -p "Continue with $action_name on $ENVIRONMENT? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Cancelled."
-        exit 0
+    if [ "$AUTO_CONFIRM" = false ]; then
+        echo ""
+        print_warning "$warning_msg"
+        echo ""
+        read -p "Continue with $action_name on $ENVIRONMENT? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Cancelled."
+            exit 0
+        fi
+    else
+        print_info "$warning_msg"
+        print_info "Auto-confirm: proceeding with $action_name on $ENVIRONMENT"
     fi
 }
 

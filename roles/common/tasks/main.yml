@@ -35,6 +35,7 @@
       - cron
       - tzdata
     state: present
+  ignore_errors: yes
 
 - name: Set timezone
   timezone:

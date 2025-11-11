@@ -56,6 +56,26 @@ func (m *Manager) Load() error {
 	}
 
 	m.statuses = statuses
+	
+	// Reset any "in-progress" states on load
+	needsSave := false
+	for _, status := range m.statuses {
+		if status.State == StateProvisioning || 
+		   status.State == StateDeploying || 
+		   status.State == StateVerifying {
+			log.Printf("[STATUS] Resetting in-progress state for %s from %v to unknown", status.Name, status.State)
+			status.State = StateUnknown
+			status.ErrorMessage = ""
+			needsSave = true
+		}
+	}
+	
+	if needsSave {
+		if err := m.save(); err != nil {
+			log.Printf("[STATUS] Error saving reset statuses: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -116,12 +136,8 @@ func (m *Manager) UpdateReadyChecks(serverName string, checks ReadyChecks) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	log.Printf("[STATUS] UpdateReadyChecks for %s: IP=%v SSH=%v Port=%v Fields=%v", 
-		serverName, checks.IPValid, checks.SSHKeyExists, checks.PortValid, checks.AllFieldsFilled)
-
 	status, ok := m.statuses[serverName]
 	if !ok {
-		log.Printf("[STATUS] Creating new status for %s", serverName)
 		status = &ServerStatus{
 			Name:       serverName,
 			State:      StateUnknown,
@@ -134,22 +150,14 @@ func (m *Manager) UpdateReadyChecks(serverName string, checks ReadyChecks) error
 
 	if checks.IsReady() {
 		if status.State == StateUnknown || status.State == StateNotReady {
-			log.Printf("[STATUS] Server %s is ready, updating state to Ready", serverName)
 			status.State = StateReady
 		}
 	} else {
-		log.Printf("[STATUS] Server %s is not ready, updating state to NotReady", serverName)
 		status.State = StateNotReady
 	}
 
 	m.statuses[serverName] = status
-	err := m.save()
-	if err != nil {
-		log.Printf("[STATUS] Error saving ready checks for %s: %v", serverName, err)
-	} else {
-		log.Printf("[STATUS] Successfully saved ready checks for %s", serverName)
-	}
-	return err
+	return m.save()
 }
 
 func (m *Manager) ValidateServer(server *inventory.Server) ReadyChecks {
@@ -187,12 +195,9 @@ func fileExists(path string) bool {
 	
 	// Expand ~ to home directory
 	expandedPath := expandTilde(path)
-	log.Printf("[STATUS] Checking file exists: %s (expanded: %s)", path, expandedPath)
 	
 	_, err := os.Stat(expandedPath)
-	exists := err == nil
-	log.Printf("[STATUS] File exists check result: %v (error: %v)", exists, err)
-	return exists
+	return err == nil
 }
 
 func expandTilde(path string) string {
@@ -202,7 +207,6 @@ func expandTilde(path string) string {
 	
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Printf("[STATUS] Failed to get home directory: %v", err)
 		return path
 	}
 	

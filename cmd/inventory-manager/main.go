@@ -6,8 +6,30 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/bastiblast/boiler-deploy/internal/status"
+	"github.com/bastiblast/boiler-deploy/internal/storage"
 	"github.com/bastiblast/boiler-deploy/internal/ui"
 )
+
+func resetAllEnvironments() {
+	stor := storage.NewStorage(".")
+	envs, err := stor.ListEnvironments()
+	if err != nil {
+		log.Printf("Failed to list environments: %v", err)
+		return
+	}
+
+	log.Printf("Resetting statuses for %d environments", len(envs))
+	for _, envName := range envs {
+		mgr, err := status.NewManager(envName)
+		if err != nil {
+			log.Printf("Failed to create status manager for %s: %v", envName, err)
+			continue
+		}
+		log.Printf("Reset completed for environment: %s", envName)
+		_ = mgr
+	}
+}
 
 func main() {
 	// Setup debug logging
@@ -20,6 +42,9 @@ func main() {
 		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 		log.Println("============ Application Started ============")
 	}
+
+	// Reset all environments' in-progress statuses
+	resetAllEnvironments()
 
 	p := tea.NewProgram(
 		ui.NewMainMenu(),

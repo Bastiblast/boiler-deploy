@@ -30,6 +30,8 @@ type WorkflowView struct {
 	progress        map[string]string
 	lastRefresh     time.Time
 	autoRefresh     bool
+	realtimeLogs    []string // Live streaming output from ansible
+	maxRealtimeLogs int
 }
 
 type tickMsg time.Time
@@ -49,6 +51,8 @@ func NewWorkflowView() (*WorkflowView, error) {
 		selectedServers: make(map[string]bool),
 		progress:        make(map[string]string),
 		autoRefresh:     true,
+		realtimeLogs:    make([]string, 0),
+		maxRealtimeLogs: 10, // Keep last 10 log lines
 	}
 
 	if err := wv.loadEnvironment(); err != nil {
@@ -88,12 +92,31 @@ func (wv *WorkflowView) loadEnvironment() error {
 	wv.logReader = logging.NewReader(envName)
 
 	wv.refreshStatuses()
+	
+	// Auto-validate all servers on startup
+	go wv.validateAllServers()
 
 	return nil
 }
 
+func (wv *WorkflowView) validateAllServers() {
+	for _, server := range wv.servers {
+		checks := wv.statusMgr.ValidateServer(server)
+		wv.statusMgr.UpdateReadyChecks(server.Name, checks)
+	}
+}
+
 func (wv *WorkflowView) onProgress(serverName, message string) {
 	wv.progress[serverName] = message
+	
+	// Add to realtime logs
+	logLine := fmt.Sprintf("[%s] %s", serverName, message)
+	wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+	
+	// Keep only last N lines
+	if len(wv.realtimeLogs) > wv.maxRealtimeLogs {
+		wv.realtimeLogs = wv.realtimeLogs[len(wv.realtimeLogs)-wv.maxRealtimeLogs:]
+	}
 }
 
 func (wv *WorkflowView) refreshStatuses() {
@@ -331,6 +354,13 @@ func (wv *WorkflowView) renderMain() string {
 
 	queue := wv.renderQueue()
 	b.WriteString(queue + "\n")
+	
+	// Add realtime logs section
+	if len(wv.realtimeLogs) > 0 {
+		b.WriteString("\n")
+		logsSection := wv.renderRealtimeLogs()
+		b.WriteString(logsSection)
+	}
 
 	return b.String()
 }
@@ -494,6 +524,38 @@ func (wv *WorkflowView) renderQueue() string {
 
 	return infoBoxStyle.Render(fmt.Sprintf("Queue: %d actions | Status: %s | Last refresh: %s",
 		queueSize, running, wv.lastRefresh.Format("15:04:05")))
+}
+
+func (wv *WorkflowView) renderRealtimeLogs() string {
+	var b strings.Builder
+	
+	// Header
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("cyan")).
+		Padding(0, 1)
+	
+	b.WriteString(headerStyle.Render("📡 Live Output") + "\n")
+	b.WriteString(strings.Repeat("─", 120) + "\n")
+	
+	// Log lines
+	logStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("gray"))
+	
+	if len(wv.realtimeLogs) == 0 {
+		b.WriteString(logStyle.Render("  Waiting for output...") + "\n")
+	} else {
+		for _, line := range wv.realtimeLogs {
+			// Truncate very long lines
+			displayLine := line
+			if len(displayLine) > 118 {
+				displayLine = displayLine[:115] + "..."
+			}
+			b.WriteString(logStyle.Render("  "+displayLine) + "\n")
+		}
+	}
+	
+	return b.String()
 }
 
 func (wv *WorkflowView) renderLogs() string {

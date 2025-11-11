@@ -114,6 +114,7 @@
       - unattended-upgrades
       - apt-listchanges
     state: present
+  ignore_errors: yes
 
 - name: Configure unattended-upgrades
   template:
