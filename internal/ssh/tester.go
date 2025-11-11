@@ -32,6 +32,14 @@ func TestConnection(host string, port int, user string, keyPath string) TestResu
 		keyPath = home + keyPath[1:]
 	}
 
+	// Check for common mistake: using .pub file
+	if len(keyPath) > 4 && keyPath[len(keyPath)-4:] == ".pub" {
+		return TestResult{
+			Success: false,
+			Message: "SSH key path points to public key (.pub). Use the private key instead (without .pub extension)",
+		}
+	}
+
 	// Read private key
 	key, err := os.ReadFile(keyPath)
 	if err != nil {
@@ -46,7 +54,7 @@ func TestConnection(host string, port int, user string, keyPath string) TestResu
 	if err != nil {
 		return TestResult{
 			Success: false,
-			Message: fmt.Sprintf("Cannot parse SSH key: %v", err),
+			Message: fmt.Sprintf("Cannot parse SSH key: %v (ensure it's the private key, not the .pub file)", err),
 		}
 	}
 

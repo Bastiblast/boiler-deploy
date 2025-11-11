@@ -232,12 +232,29 @@ func (f ServerForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (f *ServerForm) updateFocus() tea.Cmd {
-	cmds := make([]tea.Cmd, len(f.inputs))
+	// Determine how many text input fields are active based on server type
+	serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
+	maxFieldIndex := 4 // Common fields for db/monitoring (0-4)
+	typeSelectorPos := 5
+	if serverType == "web" {
+		maxFieldIndex = 8 // Common + app fields (0-8)
+		typeSelectorPos = 9
+	}
 
-	for i := 0; i < len(f.inputs); i++ {
+	var cmds []tea.Cmd
+
+	// Only manage focus for text input fields (skip type selector position)
+	for i := 0; i <= maxFieldIndex; i++ {
 		if i == f.focusIndex {
-			cmds[i] = f.inputs[i].Focus()
+			cmds = append(cmds, f.inputs[i].Focus())
 		} else {
+			f.inputs[i].Blur()
+		}
+	}
+	
+	// Blur all fields when on type selector
+	if f.focusIndex == typeSelectorPos {
+		for i := 0; i <= maxFieldIndex; i++ {
 			f.inputs[i].Blur()
 		}
 	}
@@ -281,6 +298,11 @@ func (f *ServerForm) buildServer() (*inventory.Server, error) {
 	sshKeyPath := f.inputs[4].Value()
 	if sshKeyPath == "" {
 		sshKeyPath = "~/.ssh/id_rsa"
+	}
+	
+	// Validate SSH key path - reject .pub extensions
+	if strings.HasSuffix(sshKeyPath, ".pub") {
+		return nil, fmt.Errorf("SSH key: use private key instead (remove .pub extension)")
 	}
 
 	serverType := []string{"web", "db", "monitoring"}[f.typeIndex]
