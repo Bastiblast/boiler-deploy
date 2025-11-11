@@ -1,0 +1,5 @@
+---
+# Default values for common role
+deploy_user: root
+deploy_user_groups: sudo
+# ssh_key_path: Optional - path to SSH public key for deploy user

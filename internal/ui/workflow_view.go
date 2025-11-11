@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -132,9 +131,7 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return wv, nil
 
 	case validationCompleteMsg:
-		log.Println("[WORKFLOW] Received validationCompleteMsg, refreshing statuses")
 		wv.refreshStatuses()
-		log.Println("[WORKFLOW] Statuses refreshed")
 		return wv, nil
 	}
 
@@ -167,7 +164,6 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if wv.cursor < len(wv.servers) {
 			serverName := wv.servers[wv.cursor].Name
 			wv.selectedServers[serverName] = !wv.selectedServers[serverName]
-			log.Printf("[WORKFLOW] Toggled selection for %s: %v", serverName, wv.selectedServers[serverName])
 		}
 
 	case "a":
@@ -180,31 +176,19 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "v":
-		log.Println("[WORKFLOW] Key 'v' pressed - starting validation")
 		selected := wv.getSelectedServers()
-		log.Printf("[WORKFLOW] Validating %d selected servers", len(selected))
 		if len(selected) == 0 {
-			log.Println("[WORKFLOW] No servers selected for validation")
 			return wv, nil
 		}
 		
-		// Run validation in goroutine to avoid blocking
-		go func() {
-			log.Println("[WORKFLOW] Validation goroutine started")
-			for i, server := range selected {
-				log.Printf("[WORKFLOW] Validating server %d/%d: %s", i+1, len(selected), server.Name)
-				checks := wv.statusMgr.ValidateServer(server)
-				log.Printf("[WORKFLOW] Validation checks for %s: IP=%v SSH=%v Port=%v Fields=%v", 
-					server.Name, checks.IPValid, checks.SSHKeyExists, checks.PortValid, checks.AllFieldsFilled)
-				
-				if err := wv.statusMgr.UpdateReadyChecks(server.Name, checks); err != nil {
-					log.Printf("[WORKFLOW] Error updating status for %s: %v", server.Name, err)
-				} else {
-					log.Printf("[WORKFLOW] Successfully updated status for %s", server.Name)
-				}
-			}
-			log.Println("[WORKFLOW] Validation complete")
-		}()
+		// Run validation synchronously (it's fast, no need for goroutine or intermediate state)
+		for _, server := range selected {
+			checks := wv.statusMgr.ValidateServer(server)
+			wv.statusMgr.UpdateReadyChecks(server.Name, checks)
+		}
+		
+		// Refresh to show updated status
+		wv.refreshStatuses()
 		
 		return wv, nil
 
@@ -215,21 +199,24 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		wv.deploySelected()
 
 	case "c":
-		log.Println("[WORKFLOW] Key 'c' pressed - starting check")
 		selected := wv.getSelectedServerNames()
-		log.Printf("[WORKFLOW] Checking %d selected servers: %v", len(selected), selected)
 		if len(selected) == 0 {
-			log.Println("[WORKFLOW] No servers selected for check")
 			return wv, nil
+		}
+		
+		// Ensure orchestrator is running
+		if !wv.orchestrator.IsRunning() {
+			wv.orchestrator.Start(wv.servers)
 		}
 		
 		// Update status to Verifying immediately for visual feedback
 		for _, name := range selected {
-			log.Printf("[WORKFLOW] Setting %s to Verifying state", name)
-			wv.statusMgr.UpdateStatus(name, status.StateVerifying, status.ActionCheck, "Starting check...")
+			wv.statusMgr.UpdateStatus(name, status.StateVerifying, status.ActionCheck, "Queued...")
 		}
 		
-		wv.checkSelected()
+		// Queue checks
+		wv.orchestrator.QueueCheck(selected, 0)
+		wv.refreshStatuses()
 
 	case "l":
 		if wv.cursor < len(wv.servers) {
@@ -284,25 +271,7 @@ func (wv *WorkflowView) deploySelected() {
 	}
 }
 
-func (wv *WorkflowView) checkSelected() {
-	names := wv.getSelectedServerNames()
-	log.Printf("[WORKFLOW] checkSelected called with %d servers: %v", len(names), names)
-	
-	if len(names) == 0 {
-		log.Println("[WORKFLOW] No servers to check")
-		return
-	}
-	
-	// Ensure orchestrator is running
-	if !wv.orchestrator.IsRunning() {
-		log.Println("[WORKFLOW] Orchestrator not running, starting it")
-		wv.orchestrator.Start(wv.servers)
-	}
-	
-	log.Printf("[WORKFLOW] Queueing check actions for: %v", names)
-	wv.orchestrator.QueueCheck(names, 0)
-	log.Printf("[WORKFLOW] Queue size after adding checks: %d", wv.orchestrator.GetQueueSize())
-}
+
 
 func (wv *WorkflowView) getSelectedServers() []*inventory.Server {
 	result := make([]*inventory.Server, 0)
@@ -427,8 +396,52 @@ func (wv *WorkflowView) formatStatus(st *status.ServerStatus) string {
 	switch st.State {
 	case status.StateReady:
 		icon = "✓ Ready"
+		// Show ready checks details
+		if st.ReadyChecks.IPValid && st.ReadyChecks.SSHKeyExists && st.ReadyChecks.PortValid && st.ReadyChecks.AllFieldsFilled {
+			icon = "✓ Ready"
+		} else {
+			details := ""
+			if !st.ReadyChecks.IPValid {
+				details += "IP!"
+			}
+			if !st.ReadyChecks.SSHKeyExists {
+				if details != "" { details += " " }
+				details += "SSH!"
+			}
+			if !st.ReadyChecks.PortValid {
+				if details != "" { details += " " }
+				details += "Port!"
+			}
+			if !st.ReadyChecks.AllFieldsFilled {
+				if details != "" { details += " " }
+				details += "Fields!"
+			}
+			if details != "" {
+				icon = "✓ Ready (" + details + ")"
+			}
+		}
 	case status.StateNotReady:
 		icon = "✗ Not Ready"
+		// Show what's missing
+		details := ""
+		if !st.ReadyChecks.IPValid {
+			details += "IP!"
+		}
+		if !st.ReadyChecks.SSHKeyExists {
+			if details != "" { details += " " }
+			details += "SSH!"
+		}
+		if !st.ReadyChecks.PortValid {
+			if details != "" { details += " " }
+			details += "Port!"
+		}
+		if !st.ReadyChecks.AllFieldsFilled {
+			if details != "" { details += " " }
+			details += "Fields!"
+		}
+		if details != "" {
+			icon = "✗ Not Ready (" + details + ")"
+		}
 	case status.StateProvisioning:
 		icon = "⚡ Provisioning"
 	case status.StateProvisioned:
@@ -441,12 +454,14 @@ func (wv *WorkflowView) formatStatus(st *status.ServerStatus) string {
 		icon = "🔍 Verifying"
 	case status.StateFailed:
 		icon = "✗ Failed"
+	case "validating":
+		icon = "⏳ Validating"
 	default:
 		icon = "? Unknown"
 	}
 
-	if st.ErrorMessage != "" {
-		icon += " (" + st.ErrorMessage[:min(20, len(st.ErrorMessage))] + ")"
+	if st.ErrorMessage != "" && st.State != status.StateReady && st.State != status.StateNotReady {
+		icon += " (" + st.ErrorMessage[:min(30, len(st.ErrorMessage))] + ")"
 	}
 
 	return icon

@@ -65,7 +65,10 @@ func (q *Queue) Load() error {
 func (q *Queue) Save() error {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
+	return q.save()
+}
 
+func (q *Queue) save() error {
 	data, err := json.MarshalIndent(q.actions, "", "  ")
 	if err != nil {
 		return err
@@ -90,7 +93,7 @@ func (q *Queue) Add(serverName string, action status.ActionType, priority int) s
 	log.Printf("[QUEUE] Adding action: %s for server %s (priority: %d, id: %s)", action, serverName, priority, id)
 	q.actions = append(q.actions, queuedAction)
 	q.sort()
-	q.Save()
+	q.save()
 	log.Printf("[QUEUE] Action added, queue size now: %d", len(q.actions))
 
 	return id
@@ -134,7 +137,7 @@ func (q *Queue) Complete() {
 		q.actions = q.actions[1:]
 	}
 	q.current = nil
-	q.Save()
+	q.save()
 	log.Printf("[QUEUE] Action completed, queue size now: %d", len(q.actions))
 }
 
@@ -187,7 +190,7 @@ func (q *Queue) Clear() {
 	defer q.mu.Unlock()
 
 	q.actions = make([]*status.QueuedAction, 0)
-	q.Save()
+	q.save()
 }
 
 func (q *Queue) Size() int {

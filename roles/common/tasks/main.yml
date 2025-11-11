@@ -33,12 +33,14 @@
       - rsync
       - unzip
       - cron
+      - tzdata
     state: present
 
 - name: Set timezone
   timezone:
-    name: "{{ timezone | default('Europe/Paris') }}"
-  when: timezone is defined
+    name: "{{ timezone | default('UTC') }}"
+  when: timezone is defined and timezone != ""
+  ignore_errors: yes
 
 - name: Create deploy user
   user:
@@ -53,6 +55,7 @@
     user: "{{ deploy_user }}"
     key: "{{ lookup('file', ssh_key_path) }}"
     state: present
+  when: ssh_key_path is defined and ssh_key_path != ""
 
 - name: Allow deploy user to sudo without password
   lineinfile:

@@ -1,0 +1,5 @@
+app_branch: main
+app_port: 3000
+app_repo: https://github.com/Bastiblast/portefolio
+deploy_user: root
+nodejs_version: "20"

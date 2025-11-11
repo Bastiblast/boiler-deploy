@@ -1,0 +1,4 @@
+---
+# Default values for security role
+ssh_port: 22
+enable_firewall: true  # Set to false for Docker containers or environments without iptables

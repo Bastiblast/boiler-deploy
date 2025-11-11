@@ -40,6 +40,7 @@
     name: nginx
     state: started
     enabled: yes
+  when: use_systemd | default(true)
 
 - name: Install Certbot for Let's Encrypt
   apt:

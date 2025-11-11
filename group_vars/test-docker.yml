@@ -1,0 +1,15 @@
+---
+# Test Docker Environment Variables
+
+# Override app port for testing
+app_port: 3000
+
+# Disable SSL for testing
+ssl_enabled: false
+
+# Test repository (you can change this)
+app_repo: "https://github.com/Bastiblast/ansible-next-test.git"
+app_branch: "main"
+
+# Test app name
+app_name: testapp

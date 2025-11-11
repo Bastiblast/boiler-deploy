@@ -1,0 +1,15 @@
+{
+  "docker-web-01": {
+    "name": "docker-web-01",
+    "state": "failed",
+    "last_action": "provision",
+    "last_update": "2025-11-11T23:48:36.416422623+01:00",
+    "error_message": "exit status 2",
+    "ready_checks": {
+      "ip_valid": false,
+      "ssh_key_exists": false,
+      "port_valid": false,
+      "all_fields_filled": false
+    }
+  }
+}

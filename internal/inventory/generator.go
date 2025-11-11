@@ -92,9 +92,82 @@ func (g *Generator) GenerateHostVarsYAML(server Server) ([]byte, error) {
 
 // GenerateGroupVarsYAML generates group_vars/all.yml with common settings
 func (g *Generator) GenerateGroupVarsYAML(env Environment) ([]byte, error) {
+	// Get app name from first web server or use environment name
+	appName := env.Name
+	appRepo := ""
+	appBranch := "main"
+	appPort := 3000
+	nodeVersion := "20"
+	
+	// Try to get from first web server
+	for _, server := range env.Servers {
+		if server.Type == "web" {
+			if server.GitRepo != "" {
+				appRepo = server.GitRepo
+			}
+			if server.GitBranch != "" {
+				appBranch = server.GitBranch
+			}
+			if server.AppPort > 0 {
+				appPort = server.AppPort
+			}
+			if server.NodeVersion != "" {
+				nodeVersion = server.NodeVersion
+			}
+			break
+		}
+	}
+	
 	groupVars := map[string]interface{}{
-		"deploy_user": env.Config.DeployUser,
-		"timezone":    env.Config.Timezone,
+		"deploy_user":        env.Config.DeployUser,
+		"deploy_user_groups": []string{"sudo", "www-data"},
+		
+		// SSH Configuration
+		"ssh_port": 22,
+		
+		// Node.js Configuration
+		"nodejs_version": nodeVersion,
+		
+		// Application Configuration
+		"app_name":         appName,
+		"app_port":         appPort,
+		"app_repo":         appRepo,
+		"app_branch":       appBranch,
+		"app_dir":          fmt.Sprintf("/var/www/%s", appName),
+		"app_releases_dir": "{{ app_dir }}/releases",
+		"app_current_dir":  "{{ app_dir }}/current",
+		"app_shared_dir":   "{{ app_dir }}/shared",
+		
+		// PM2 Configuration
+		"pm2_app_name":   "{{ app_name }}",
+		"pm2_instances":  2,
+		"pm2_max_memory": "512M",
+		
+		// Environment
+		"app_environment": "production",
+		"node_env":        "production",
+		
+		// Firewall - disabled by default for Docker/local testing
+		"enable_firewall": false,
+		
+		// Backup Configuration
+		"backup_dir":             "/var/backups",
+		"backup_retention_days":  7,
+		
+		// SSL Configuration (empty/example for local testing)
+		"ssl_domains": []string{appName + ".example.com"},
+		"ssl_email":   "admin@example.com",
+		
+		// Nginx Configuration
+		"nginx_worker_processes":     "auto",
+		"nginx_worker_connections":   1024,
+		"nginx_keepalive_timeout":    65,
+		"nginx_client_max_body_size": "20M",
+	}
+	
+	// Only add timezone if it's not empty (optional for lightweight containers)
+	if env.Config.Timezone != "" {
+		groupVars["timezone"] = env.Config.Timezone
 	}
 	
 	return yaml.Marshal(groupVars)

@@ -71,13 +71,25 @@ func (o *Orchestrator) QueueCheck(serverNames []string, priority int) {
 func (o *Orchestrator) Start(servers []*inventory.Server) {
 	o.mu.Lock()
 	if o.running {
+		log.Println("[ORCHESTRATOR] Already running, skipping start")
 		o.mu.Unlock()
 		return
 	}
+	
+	// Reset stopChan if needed
+	o.stopChan = make(chan struct{})
 	o.running = true
 	o.mu.Unlock()
 
-	go o.processQueue(servers)
+	log.Println("[ORCHESTRATOR] Starting processQueue goroutine")
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[ORCHESTRATOR] PANIC in processQueue: %v", r)
+			}
+		}()
+		o.processQueue(servers)
+	}()
 }
 
 func (o *Orchestrator) Stop() {
@@ -92,24 +104,27 @@ func (o *Orchestrator) Stop() {
 
 func (o *Orchestrator) processQueue(servers []*inventory.Server) {
 	log.Println("[ORCHESTRATOR] processQueue started")
+	
 	for {
+		// Check for stop signal (non-blocking)
 		select {
 		case <-o.stopChan:
 			log.Println("[ORCHESTRATOR] processQueue received stop signal")
 			return
 		default:
-			action := o.queue.Next()
-			if action == nil {
-				// No action, sleep briefly to avoid busy loop
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-
-			log.Printf("[ORCHESTRATOR] Processing action: %s for server %s", action.Action, action.ServerName)
-			o.executeAction(action, servers)
-			o.queue.Complete()
-			log.Printf("[ORCHESTRATOR] Completed action: %s for server %s", action.Action, action.ServerName)
+			// Continue processing
 		}
+		
+		action := o.queue.Next()
+		if action == nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		log.Printf("[ORCHESTRATOR] Processing action: %s for server %s", action.Action, action.ServerName)
+		o.executeAction(action, servers)
+		o.queue.Complete()
+		log.Printf("[ORCHESTRATOR] Completed action: %s for server %s", action.Action, action.ServerName)
 	}
 }
 
@@ -170,26 +185,35 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 		}
 
 	case status.ActionCheck:
-		log.Printf("[ORCHESTRATOR] Executing check for %s (IP: %s, Port: %d)", action.ServerName, server.IP, 80)
+		log.Printf("[ORCHESTRATOR] Starting health check for %s", action.ServerName)
+		
+		// Only check servers that have been deployed
+		currentStatus := o.statusMgr.GetStatus(action.ServerName)
+		if currentStatus.State != status.StateDeployed && currentStatus.State != status.StateProvisioned {
+			log.Printf("[ORCHESTRATOR] Skipping check - server %s not deployed yet (state: %s)", action.ServerName, currentStatus.State)
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
+				"Cannot check: server not deployed yet. Deploy first.")
+			close(progressChan)
+			return
+		}
+		
 		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Running health check...")
 		close(progressChan)
 
-		// Use port 80 for external access (nginx proxy)
-		log.Printf("[ORCHESTRATOR] Running health check: curl http://%s:80/", server.IP)
-		if err := o.executor.HealthCheck(server.IP, 80); err != nil {
-			log.Printf("[ORCHESTRATOR] Health check FAILED for %s: %v", action.ServerName, err)
+		// Determine which port to check based on deployment state
+		// - After deployment: check Nginx proxy on port 80
+		// - For localhost testing: check the mapped HTTP port (usually 8080, but we check 80 inside container)
+		checkPort := 80
+		
+		log.Printf("[ORCHESTRATOR] Checking HTTP on %s:%d", server.IP, checkPort)
+		
+		if err := o.executor.HealthCheck(server.IP, checkPort); err != nil {
+			log.Printf("[ORCHESTRATOR] Health check failed for %s: %v", action.ServerName, err)
 			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
 				fmt.Sprintf("Check failed: %v", err))
 		} else {
-			log.Printf("[ORCHESTRATOR] Health check PASSED for %s", action.ServerName)
-			currentStatus := o.statusMgr.GetStatus(action.ServerName)
-			// After successful check, mark as deployed if it was in a deployment-related state
-			if currentStatus.State == status.StateDeploying || currentStatus.State == status.StateVerifying || 
-			   currentStatus.State == status.StateProvisioned {
-				o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
-			} else {
-				log.Printf("[ORCHESTRATOR] Server %s in state %v after check", action.ServerName, currentStatus.State)
-			}
+			log.Printf("[ORCHESTRATOR] Health check passed for %s", action.ServerName)
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
 		}
 	}
 }
