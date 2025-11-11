@@ -24,14 +24,37 @@ echo
 
 # Step 1: Get credentials
 echo -e "${YELLOW}Step 1/7: Authentication${NC}"
+echo
+echo "First, let's check if you need to set up your admin password in Semaphore UI."
+echo "Have you already logged into Semaphore at http://localhost:3000 ?"
+echo -n "  [Y/n]: "
+read -r ALREADY_SETUP
+ALREADY_SETUP=${ALREADY_SETUP:-y}
+
+if [[ ! "$ALREADY_SETUP" =~ ^[Yy] ]]; then
+    echo
+    echo -e "${YELLOW}⚠ Please complete the initial setup first:${NC}"
+    echo "  1. Open http://localhost:3000 in your browser"
+    echo "  2. Complete the setup wizard"
+    echo "  3. Remember your admin password"
+    echo "  4. Then run this script again"
+    echo
+    exit 0
+fi
+
+echo
 echo -n "Enter Semaphore username [admin]: "
 read -r SEMAPHORE_USER
 SEMAPHORE_USER=${SEMAPHORE_USER:-admin}
 
-echo -n "Enter Semaphore password [admin]: "
+echo -n "Enter Semaphore password: "
 read -rs SEMAPHORE_PASS
-SEMAPHORE_PASS=${SEMAPHORE_PASS:-admin}
 echo
+
+if [ -z "$SEMAPHORE_PASS" ]; then
+    echo -e "${RED}✗ Password cannot be empty${NC}"
+    exit 1
+fi
 
 # Login and get token
 echo "Authenticating..."
@@ -43,7 +66,14 @@ TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
 if [ -z "$TOKEN" ]; then
     echo -e "${RED}✗ Authentication failed!${NC}"
-    echo "Response: $LOGIN_RESPONSE"
+    echo
+    echo "Possible reasons:"
+    echo "  1. Wrong password"
+    echo "  2. Semaphore not fully initialized"
+    echo
+    echo "To reset admin password, run:"
+    echo "  docker exec -it semaphore-ui semaphore user change-password --admin admin"
+    echo
     exit 1
 fi
 

@@ -261,3 +261,36 @@ Après exécution, vous aurez un projet Semaphore **complètement configuré** a
 ---
 
 **Questions ? Consultez `SEMAPHORE_GUIDE.md` pour plus de détails**
+
+---
+
+## 🔑 Problème d'Authentification ?
+
+### Erreur : "Authentication failed"
+
+Si vous obtenez cette erreur, votre mot de passe admin n'est pas celui par défaut.
+
+**Solution 1 : Réinitialiser le mot de passe**
+
+```bash
+./reset-admin-password.sh
+```
+
+Ce script réinitialisera le mot de passe admin à `admin`.
+
+**Solution 2 : Utiliser le bon mot de passe**
+
+Si vous connaissez votre mot de passe admin :
+```bash
+./semaphore-import.sh
+# Entrez votre mot de passe actuel quand demandé
+```
+
+**Solution 3 : Via l'interface web**
+
+1. Ouvrir http://localhost:3000
+2. Se connecter avec vos identifiants
+3. User Settings → API Tokens → Create Token
+4. Utiliser le token au lieu du mot de passe
+
+---

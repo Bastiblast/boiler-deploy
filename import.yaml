@@ -2,7 +2,7 @@
 # Semaphore Project Import Configuration
 # File: import.yaml
 # Usage: Use this to quickly configure your Semaphore project
-
+name: trying
 project:
   name: boiler-deploy
   alert: false
