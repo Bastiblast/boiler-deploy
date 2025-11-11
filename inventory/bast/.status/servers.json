@@ -1,0 +1,13 @@
+{
+  "bast-web-01": {
+    "name": "bast-web-01",
+    "state": "not_ready",
+    "last_update": "2025-11-11T20:56:52.137083931+01:00",
+    "ready_checks": {
+      "ip_valid": true,
+      "ssh_key_exists": false,
+      "port_valid": true,
+      "all_fields_filled": true
+    }
+  }
+}

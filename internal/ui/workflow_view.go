@@ -34,6 +34,7 @@ type WorkflowView struct {
 
 type tickMsg time.Time
 type statusUpdateMsg struct{}
+type validationCompleteMsg struct{}
 
 func NewWorkflowView() (*WorkflowView, error) {
 	stor := storage.NewStorage(".")
@@ -128,6 +129,10 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statusUpdateMsg:
 		wv.refreshStatuses()
 		return wv, nil
+
+	case validationCompleteMsg:
+		wv.refreshStatuses()
+		return wv, nil
 	}
 
 	return wv, nil
@@ -171,7 +176,7 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "v":
-		wv.validateSelected()
+		return wv, wv.validateSelectedCmd()
 
 	case "p":
 		wv.provisionSelected()
@@ -219,13 +224,15 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return wv, nil
 }
 
-func (wv *WorkflowView) validateSelected() {
-	selected := wv.getSelectedServers()
-	for _, server := range selected {
-		checks := wv.statusMgr.ValidateServer(server)
-		wv.statusMgr.UpdateReadyChecks(server.Name, checks)
+func (wv *WorkflowView) validateSelectedCmd() tea.Cmd {
+	return func() tea.Msg {
+		selected := wv.getSelectedServers()
+		for _, server := range selected {
+			checks := wv.statusMgr.ValidateServer(server)
+			wv.statusMgr.UpdateReadyChecks(server.Name, checks)
+		}
+		return validationCompleteMsg{}
 	}
-	wv.refreshStatuses()
 }
 
 func (wv *WorkflowView) provisionSelected() {

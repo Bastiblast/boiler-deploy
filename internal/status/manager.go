@@ -61,12 +61,14 @@ func (m *Manager) Load() error {
 func (m *Manager) Save() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return m.save()
+}
 
+func (m *Manager) save() error {
 	data, err := json.MarshalIndent(m.statuses, "", "  ")
 	if err != nil {
 		return err
 	}
-
 	return os.WriteFile(m.statusFile, data, 0644)
 }
 
@@ -98,7 +100,7 @@ func (m *Manager) UpdateStatus(serverName string, state ServerState, action Acti
 	}
 
 	m.statuses[serverName] = status
-	return m.Save()
+	return m.save()
 }
 
 func (m *Manager) UpdateReadyChecks(serverName string, checks ReadyChecks) error {
@@ -126,7 +128,7 @@ func (m *Manager) UpdateReadyChecks(serverName string, checks ReadyChecks) error
 	}
 
 	m.statuses[serverName] = status
-	return m.Save()
+	return m.save()
 }
 
 func (m *Manager) ValidateServer(server *inventory.Server) ReadyChecks {
