@@ -184,8 +184,37 @@ func fileExists(path string) bool {
 	if path == "" {
 		return false
 	}
-	_, err := os.Stat(path)
-	return err == nil
+	
+	// Expand ~ to home directory
+	expandedPath := expandTilde(path)
+	log.Printf("[STATUS] Checking file exists: %s (expanded: %s)", path, expandedPath)
+	
+	_, err := os.Stat(expandedPath)
+	exists := err == nil
+	log.Printf("[STATUS] File exists check result: %v (error: %v)", exists, err)
+	return exists
+}
+
+func expandTilde(path string) string {
+	if len(path) == 0 || path[0] != '~' {
+		return path
+	}
+	
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("[STATUS] Failed to get home directory: %v", err)
+		return path
+	}
+	
+	if len(path) == 1 {
+		return homeDir
+	}
+	
+	if path[1] == '/' {
+		return filepath.Join(homeDir, path[2:])
+	}
+	
+	return path
 }
 
 func (m *Manager) GetAllStatuses() map[string]*ServerStatus {
