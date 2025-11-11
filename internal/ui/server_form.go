@@ -53,9 +53,14 @@ func NewServerForm(env *inventory.Environment, editServer ...*inventory.Server) 
 	inputs[3].Placeholder = "root"
 	inputs[3].Width = 20
 
-	// SSH Key Path
+	// SSH Key Path - use mono SSH key if available
 	inputs[4] = textinput.New()
-	inputs[4].Placeholder = "~/.ssh/id_rsa"
+	if env.MonoSSHKey && env.MonoSSHKeyPath != "" {
+		inputs[4].Placeholder = env.MonoSSHKeyPath
+		inputs[4].SetValue(env.MonoSSHKeyPath)
+	} else {
+		inputs[4].Placeholder = "~/.ssh/id_rsa"
+	}
 	inputs[4].Width = 50
 
 	// App-specific fields (for web servers)

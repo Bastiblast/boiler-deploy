@@ -2,12 +2,14 @@ package inventory
 
 // Environment represents a deployment environment
 type Environment struct {
-	Name       string   `yaml:"name"`
-	Services   Services `yaml:"services"`
-	Config     Config   `yaml:"config"`
-	Servers    []Server `yaml:"servers"`
-	MonoServer bool     `yaml:"mono_server,omitempty"`
-	MonoIP     string   `yaml:"mono_ip,omitempty"`
+	Name           string   `yaml:"name"`
+	Services       Services `yaml:"services"`
+	Config         Config   `yaml:"config"`
+	Servers        []Server `yaml:"servers"`
+	MonoServer     bool     `yaml:"mono_server,omitempty"`
+	MonoIP         string   `yaml:"mono_ip,omitempty"`
+	MonoSSHKey     bool     `yaml:"mono_ssh_key,omitempty"`
+	MonoSSHKeyPath string   `yaml:"mono_ssh_key_path,omitempty"`
 }
 
 // Services represents enabled services
