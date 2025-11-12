@@ -27,7 +27,9 @@ WARNING="⚠"
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="${SCRIPT_DIR}/setup_$(date +%Y%m%d_%H%M%S).log"
+LOGS_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "${LOGS_DIR}"
+LOG_FILE="${LOGS_DIR}/setup_$(date +%Y%m%d_%H%M%S).log"
 STATE_FILE=""
 
 # Configuration

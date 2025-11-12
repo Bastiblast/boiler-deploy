@@ -1,9 +1,10 @@
 {
   "docker-web-01": {
     "name": "docker-web-01",
-    "state": "provisioned",
-    "last_action": "provision",
-    "last_update": "2025-11-12T00:54:49.949760973+01:00",
+    "state": "failed",
+    "last_action": "check",
+    "last_update": "2025-11-12T01:05:36.446368363+01:00",
+    "error_message": "Cannot check: server not deployed yet. Deploy first.",
     "ready_checks": {
       "ip_valid": false,
       "ssh_key_exists": false,
