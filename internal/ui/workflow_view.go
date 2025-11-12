@@ -282,16 +282,32 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (wv *WorkflowView) provisionSelected() {
 	names := wv.getSelectedServerNames()
-	if len(names) > 0 {
-		wv.orchestrator.QueueProvision(names, 0)
+	if len(names) == 0 {
+		return
 	}
+	
+	// Ensure orchestrator is running
+	if !wv.orchestrator.IsRunning() {
+		wv.orchestrator.Start(wv.servers)
+	}
+	
+	wv.orchestrator.QueueProvision(names, 0)
+	wv.refreshStatuses()
 }
 
 func (wv *WorkflowView) deploySelected() {
 	names := wv.getSelectedServerNames()
-	if len(names) > 0 {
-		wv.orchestrator.QueueDeploy(names, 0)
+	if len(names) == 0 {
+		return
 	}
+	
+	// Ensure orchestrator is running
+	if !wv.orchestrator.IsRunning() {
+		wv.orchestrator.Start(wv.servers)
+	}
+	
+	wv.orchestrator.QueueDeploy(names, 0)
+	wv.refreshStatuses()
 }
 
 

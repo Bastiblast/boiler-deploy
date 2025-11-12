@@ -34,8 +34,11 @@ func (s *Storage) SaveEnvironment(env inventory.Environment) error {
 		return fmt.Errorf("failed to create host_vars directory: %v", err)
 	}
 	
-	// Save environment config
-	configPath := filepath.Join(envPath, "config.yml")
+	// Save environment config to .env-config.yml (hidden from Ansible with leading dot)
+	// Ansible ignores files starting with '.'
+	configPath := filepath.Join(envPath, ".env-config.yml")
+	
+	// Save the full environment including mono_* fields for our app
 	configData, err := yaml.Marshal(env)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %v", err)
@@ -95,7 +98,7 @@ func (s *Storage) SaveEnvironment(env inventory.Environment) error {
 
 // LoadEnvironment loads an environment from disk
 func (s *Storage) LoadEnvironment(name string) (*inventory.Environment, error) {
-	configPath := filepath.Join(s.basePath, "inventory", name, "config.yml")
+	configPath := filepath.Join(s.basePath, "inventory", name, ".env-config.yml")
 	
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -125,8 +128,8 @@ func (s *Storage) ListEnvironments() ([]string, error) {
 	var envs []string
 	for _, entry := range entries {
 		if entry.IsDir() {
-			// Check if config.yml exists
-			configPath := filepath.Join(invPath, entry.Name(), "config.yml")
+			// Check if .env-config.yml exists
+			configPath := filepath.Join(invPath, entry.Name(), ".env-config.yml")
 			if _, err := os.Stat(configPath); err == nil {
 				envs = append(envs, entry.Name())
 			}
@@ -138,7 +141,7 @@ func (s *Storage) ListEnvironments() ([]string, error) {
 
 // EnvironmentExists checks if an environment exists
 func (s *Storage) EnvironmentExists(name string) bool {
-	configPath := filepath.Join(s.basePath, "inventory", name, "config.yml")
+	configPath := filepath.Join(s.basePath, "inventory", name, ".env-config.yml")
 	_, err := os.Stat(configPath)
 	return err == nil
 }

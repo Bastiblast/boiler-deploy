@@ -1,16 +1,1 @@
-[
-  {
-    "id": "da30fa85-a848-4c1c-b85b-6c025303178c",
-    "server_name": "docker-web-01",
-    "action": "provision",
-    "priority": 0,
-    "queued_at": "2025-11-12T00:31:02.793913011+01:00"
-  },
-  {
-    "id": "34a035ea-f516-4708-a928-54401805b9dc",
-    "server_name": "docker-web-01",
-    "action": "deploy",
-    "priority": 0,
-    "queued_at": "2025-11-12T00:31:03.02086017+01:00"
-  }
-]
+[]

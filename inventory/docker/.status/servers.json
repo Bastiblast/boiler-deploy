@@ -1,14 +1,14 @@
 {
   "docker-web-01": {
     "name": "docker-web-01",
-    "state": "unknown",
+    "state": "provisioned",
     "last_action": "provision",
-    "last_update": "2025-11-12T00:30:46.127704657+01:00",
+    "last_update": "2025-11-12T00:54:49.949760973+01:00",
     "ready_checks": {
-      "ip_valid": true,
-      "ssh_key_exists": true,
-      "port_valid": true,
-      "all_fields_filled": true
+      "ip_valid": false,
+      "ssh_key_exists": false,
+      "port_valid": false,
+      "all_fields_filled": false
     }
   }
 }

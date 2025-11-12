@@ -58,9 +58,12 @@ func (o *Orchestrator) QueueProvision(serverNames []string, priority int) {
 }
 
 func (o *Orchestrator) QueueDeploy(serverNames []string, priority int) {
+	log.Printf("[ORCHESTRATOR] QueueDeploy called with %d servers: %v", len(serverNames), serverNames)
 	for _, name := range serverNames {
+		log.Printf("[ORCHESTRATOR] Adding deploy action for server: %s", name)
 		o.queue.Add(name, status.ActionDeploy, priority)
 	}
+	log.Printf("[ORCHESTRATOR] Queue size after adding deploys: %d", o.GetQueueSize())
 }
 
 func (o *Orchestrator) QueueCheck(serverNames []string, priority int) {
