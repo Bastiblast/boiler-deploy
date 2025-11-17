@@ -1,29 +1,30 @@
-deploy_user: root
-deploy_user_groups:
-  - sudo
-  - www-data
-ssh_port: 22
-nodejs_version: "20"
+allow_root_login: true
+app_branch: main
+app_current_dir: '{{ app_dir }}/current'
+app_dir: /var/www/docker
+app_environment: production
 app_name: docker
 app_port: 3000
+app_releases_dir: '{{ app_dir }}/releases'
 app_repo: https://github.com/Bastiblast/portefolio
-app_branch: main
-app_dir: /var/www/docker
-app_releases_dir: "{{ app_dir }}/releases"
-app_current_dir: "{{ app_dir }}/current"
-app_shared_dir: "{{ app_dir }}/shared"
-pm2_app_name: "{{ app_name }}"
-pm2_instances: 2
-pm2_max_memory: 512M
-app_environment: production
-node_env: production
-enable_firewall: false
+app_shared_dir: '{{ app_dir }}/shared'
 backup_dir: /var/backups
 backup_retention_days: 7
-ssl_domains:
-  - docker.example.com
-ssl_email: admin@example.com
-nginx_worker_processes: auto
-nginx_worker_connections: 1024
-nginx_keepalive_timeout: 65
+deploy_user: root
+deploy_user_groups:
+    - sudo
+    - www-data
+enable_firewall: false
 nginx_client_max_body_size: 20M
+nginx_keepalive_timeout: 65
+nginx_worker_connections: 1024
+nginx_worker_processes: auto
+node_env: production
+nodejs_version: "20"
+pm2_app_name: '{{ app_name }}'
+pm2_instances: 2
+pm2_max_memory: 512M
+ssh_port: 22
+ssl_domains:
+    - docker.example.com
+ssl_email: admin@example.com

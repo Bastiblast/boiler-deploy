@@ -95,18 +95,26 @@
     state: started
   when: enable_firewall | default(true)
 
-- name: Configure SSH - disable root login
+- name: Configure SSH - disable password authentication
   lineinfile:
     path: /etc/ssh/sshd_config
     regexp: "{{ item.regexp }}"
     line: "{{ item.line }}"
     state: present
   loop:
-    - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
     - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
     - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
     - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
   notify: restart sshd
+
+- name: Configure SSH - disable root login (production only)
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+  notify: restart sshd
+  when: not (allow_root_login | default(false))
 
 - name: Install unattended-upgrades
   apt:

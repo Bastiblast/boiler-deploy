@@ -52,7 +52,7 @@ func NewWorkflowView() (*WorkflowView, error) {
 		progress:        make(map[string]string),
 		autoRefresh:     true,
 		realtimeLogs:    make([]string, 0),
-		maxRealtimeLogs: 10, // Keep last 10 log lines
+		maxRealtimeLogs: 15, // Keep last 15 log lines for better visibility
 	}
 
 	if err := wv.loadEnvironment(); err != nil {
@@ -554,12 +554,9 @@ func (wv *WorkflowView) renderRealtimeLogs() string {
 	b.WriteString(headerStyle.Render("📡 Live Output") + "\n")
 	b.WriteString(strings.Repeat("─", 120) + "\n")
 	
-	// Log lines
-	logStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("gray"))
-	
 	if len(wv.realtimeLogs) == 0 {
-		b.WriteString(logStyle.Render("  Waiting for output...") + "\n")
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		b.WriteString(dimStyle.Render("  Waiting for actions...") + "\n")
 	} else {
 		for _, line := range wv.realtimeLogs {
 			// Truncate very long lines
@@ -567,11 +564,34 @@ func (wv *WorkflowView) renderRealtimeLogs() string {
 			if len(displayLine) > 118 {
 				displayLine = displayLine[:115] + "..."
 			}
-			b.WriteString(logStyle.Render("  "+displayLine) + "\n")
+			
+			// Apply different styles based on content
+			styledLine := wv.styleLogLine(displayLine)
+			b.WriteString("  " + styledLine + "\n")
 		}
 	}
 	
 	return b.String()
+}
+
+func (wv *WorkflowView) styleLogLine(line string) string {
+	// Color-code log lines based on content
+	switch {
+	case strings.Contains(line, "✅") || strings.Contains(line, "✓"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("green")).Render(line)
+	case strings.Contains(line, "❌") || strings.Contains(line, "✗"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("red")).Render(line)
+	case strings.Contains(line, "⚙️") || strings.Contains(line, "Task:"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("cyan")).Render(line)
+	case strings.Contains(line, "🚀") || strings.Contains(line, "Starting"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("yellow")).Render(line)
+	case strings.Contains(line, "⚠️") || strings.Contains(line, "WARNING"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("orange")).Render(line)
+	case strings.Contains(line, "📖") || strings.Contains(line, "▶️") || strings.Contains(line, "📊"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("magenta")).Render(line)
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("gray")).Render(line)
+	}
 }
 
 func (wv *WorkflowView) renderLogs() string {

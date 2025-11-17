@@ -2,7 +2,6 @@ package ansible
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -48,13 +47,19 @@ func (e *Executor) RunPlaybook(playbook string, serverName string, progressChan 
 	inventoryPath := filepath.Join("inventory", e.environment, "hosts.yml")
 	playbookPath := filepath.Join("playbooks", playbook)
 
+	// Send initial progress
+	if progressChan != nil {
+		progressChan <- fmt.Sprintf("🚀 Starting %s playbook...", action)
+	}
+
 	cmd := exec.Command("ansible-playbook",
 		"-i", inventoryPath,
 		playbookPath,
 		"--limit", serverName,
 	)
 
-	cmd.Env = append(os.Environ(), "ANSIBLE_STDOUT_CALLBACK=json", "ANSIBLE_FORCE_COLOR=false")
+	// Don't use JSON callback as it can hang - use default callback and parse text
+	cmd.Env = append(os.Environ(), "ANSIBLE_FORCE_COLOR=false")
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -81,6 +86,13 @@ func (e *Executor) RunPlaybook(playbook string, serverName string, progressChan 
 
 	if err != nil {
 		result.ErrorMessage = err.Error()
+		if progressChan != nil {
+			progressChan <- fmt.Sprintf("❌ %s failed: %v", action, err)
+		}
+	} else {
+		if progressChan != nil {
+			progressChan <- fmt.Sprintf("✅ %s completed successfully", action)
+		}
 	}
 
 	return result, nil
@@ -99,28 +111,67 @@ func (e *Executor) streamOutput(reader io.Reader, writer io.Writer, progressChan
 }
 
 func (e *Executor) parseProgress(line string, progressChan chan<- string) {
-	var event map[string]interface{}
-	if err := json.Unmarshal([]byte(line), &event); err != nil {
+	line = strings.TrimSpace(line)
+	if line == "" {
 		return
 	}
 
-	if eventType, ok := event["event"].(string); ok {
-		switch eventType {
-		case "playbook_on_task_start":
-			if task, ok := event["event_data"].(map[string]interface{}); ok {
-				if taskName, ok := task["name"].(string); ok {
-					progressChan <- fmt.Sprintf("Task: %s", taskName)
-				}
-			}
-		case "runner_on_ok":
-			progressChan <- "✓ Task completed"
-		case "runner_on_failed":
-			if result, ok := event["event_data"].(map[string]interface{}); ok {
-				if msg, ok := result["msg"].(string); ok {
-					progressChan <- fmt.Sprintf("✗ Failed: %s", msg)
-				}
-			}
+	// Parse Ansible text output
+	switch {
+	case strings.HasPrefix(line, "PLAY ["):
+		playName := strings.TrimPrefix(line, "PLAY [")
+		playName = strings.TrimSuffix(playName, "]")
+		playName = strings.TrimSpace(strings.Split(playName, "*")[0])
+		progressChan <- fmt.Sprintf("▶️  Play: %s", playName)
+		
+	case strings.HasPrefix(line, "TASK ["):
+		taskName := strings.TrimPrefix(line, "TASK [")
+		taskName = strings.TrimSuffix(taskName, "]")
+		taskName = strings.TrimSpace(strings.Split(taskName, "*")[0])
+		if len(taskName) > 60 {
+			taskName = taskName[:57] + "..."
 		}
+		progressChan <- fmt.Sprintf("⚙️  %s", taskName)
+		
+	case strings.HasPrefix(line, "ok:"):
+		progressChan <- "  ✓ OK"
+		
+	case strings.HasPrefix(line, "changed:"):
+		progressChan <- "  ✓ Changed"
+		
+	case strings.HasPrefix(line, "failed:") || strings.HasPrefix(line, "fatal:"):
+		// Try to extract error message
+		parts := strings.SplitN(line, "=>", 2)
+		if len(parts) == 2 {
+			msg := strings.TrimSpace(parts[1])
+			if len(msg) > 80 {
+				msg = msg[:77] + "..."
+			}
+			progressChan <- fmt.Sprintf("  ❌ %s", msg)
+		} else {
+			progressChan <- "  ❌ Failed"
+		}
+		
+	case strings.HasPrefix(line, "skipping:"):
+		progressChan <- "  ⊘ Skipped"
+		
+	case strings.Contains(line, "UNREACHABLE"):
+		progressChan <- "  ⚠️  Host unreachable"
+		
+	case strings.HasPrefix(line, "PLAY RECAP"):
+		progressChan <- "📊 Execution summary"
+		
+	case strings.Contains(line, "WARNING"):
+		if len(line) > 100 {
+			line = line[:97] + "..."
+		}
+		progressChan <- fmt.Sprintf("⚠️  %s", line)
+		
+	case strings.Contains(line, "ERROR"):
+		if len(line) > 100 {
+			line = line[:97] + "..."
+		}
+		progressChan <- fmt.Sprintf("❌ %s", line)
 	}
 }
 

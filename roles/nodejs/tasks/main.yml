@@ -1,30 +1,42 @@
 ---
-- name: Install Node.js repository
-  shell: |
-    curl -fsSL https://deb.nodesource.com/setup_{{ nodejs_version }}.x | bash -
-  args:
-    creates: /etc/apt/sources.list.d/nodesource.list
-
-- name: Install Node.js
+- name: Install build dependencies
   apt:
     name:
-      - nodejs
+      - git
       - build-essential
+      - libssl-dev
+      - curl
     state: present
     update_cache: yes
 
-- name: Install PM2 and pnpm globally
-  shell: /usr/bin/npm install -g {{ item }}
-  loop:
-    - pm2
-    - pnpm
-  ignore_errors: yes
+- name: Check if NVM is already installed
+  stat:
+    path: "/home/{{ deploy_user }}/.nvm/nvm.sh"
+  register: nvm_installed
 
-- name: Setup PM2 startup script
-  shell: pm2 startup systemd -u {{ deploy_user }} --hp /home/{{ deploy_user }}
+- name: Install NVM
+  shell: |
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
   args:
-    creates: /etc/systemd/system/pm2-{{ deploy_user }}.service
-  ignore_errors: yes
+    creates: "/home/{{ deploy_user }}/.nvm/nvm.sh"
+    executable: /bin/bash
+  become: yes
+  become_user: "{{ deploy_user }}"
+  environment:
+    HOME: "/home/{{ deploy_user }}"
+  when: not nvm_installed.stat.exists
+
+- name: Add NVM to bashrc if not present
+  lineinfile:
+    path: "/home/{{ deploy_user }}/.bashrc"
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - 'export NVM_DIR="$HOME/.nvm"'
+    - '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"'
+    - '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'
+  become: yes
+  become_user: "{{ deploy_user }}"
 
 - name: Create application directories
   file:

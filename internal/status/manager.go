@@ -57,13 +57,14 @@ func (m *Manager) Load() error {
 
 	m.statuses = statuses
 	
-	// Reset any "in-progress" states on load
+	// Reset any "in-progress" or "failed" states on load
 	needsSave := false
 	for _, status := range m.statuses {
 		if status.State == StateProvisioning || 
 		   status.State == StateDeploying || 
-		   status.State == StateVerifying {
-			log.Printf("[STATUS] Resetting in-progress state for %s from %v to unknown", status.Name, status.State)
+		   status.State == StateVerifying ||
+		   status.State == StateFailed {
+			log.Printf("[STATUS] Resetting state for %s from %v to unknown", status.Name, status.State)
 			status.State = StateUnknown
 			status.ErrorMessage = ""
 			needsSave = true
@@ -148,12 +149,16 @@ func (m *Manager) UpdateReadyChecks(serverName string, checks ReadyChecks) error
 	status.ReadyChecks = checks
 	status.LastUpdate = time.Now()
 
-	if checks.IsReady() {
-		if status.State == StateUnknown || status.State == StateNotReady {
-			status.State = StateReady
+	// Only update state to Ready/NotReady if not already in a more advanced state
+	// Don't overwrite Provisioned or Deployed states
+	if status.State != StateProvisioned && status.State != StateDeployed {
+		if checks.IsReady() {
+			if status.State == StateUnknown || status.State == StateNotReady {
+				status.State = StateReady
+			}
+		} else {
+			status.State = StateNotReady
 		}
-	} else {
-		status.State = StateNotReady
 	}
 
 	m.statuses[serverName] = status

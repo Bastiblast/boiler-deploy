@@ -1,5 +1,81 @@
 # Troubleshooting Guide - Ansible Inventory Manager
 
+## SSH Connection Issues
+
+### "ROOT LOGIN REFUSED" Error
+
+**Symptom:**
+- SSH test fails in Inventory Manager
+- Container logs show: `ROOT LOGIN REFUSED FROM 172.17.0.1`
+- Error: `Connection failed: ssh: handshake failed: ssh: unable to authenticate`
+
+**Cause:**
+The SSH server has `PermitRootLogin no` in its configuration file.
+
+**Solution for Docker Test Container:**
+```bash
+# Enable root login in the running container
+docker exec boiler-test-vps sed -i 's/^PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
+docker exec boiler-test-vps systemctl restart ssh
+
+# Test the connection
+ssh -i ~/.ssh/boiler_test_rsa -p 2222 -o IdentitiesOnly=yes root@127.0.0.1 "echo OK"
+```
+
+**Prevention:**
+Always rebuild the container from scratch:
+```bash
+./tests/test-docker-vps.sh cleanup
+./tests/test-docker-vps.sh setup
+```
+
+**For Production Servers:**
+Edit `/etc/ssh/sshd_config` and set:
+```
+PermitRootLogin yes
+# or for key-only:
+PermitRootLogin prohibit-password
+```
+Then: `systemctl restart sshd`
+
+### "Too many authentication failures"
+
+**Symptom:**
+```
+Received disconnect: Too many authentication failures
+```
+
+**Cause:**
+SSH agent has too many keys (>5). SSH tries each one before your specified key.
+
+**Solution:**
+```bash
+# Option 1: Use IdentitiesOnly
+ssh -i ~/.ssh/your_key -o IdentitiesOnly=yes -p 2222 root@server
+
+# Option 2: Temporarily clear agent
+ssh-add -D  # Remove all
+ssh-add ~/.ssh/your_key  # Add specific key
+```
+
+**Note:** Inventory Manager doesn't use ssh-agent, so it avoids this issue.
+
+### "Host key verification failed"
+
+**Symptom:**
+```
+WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!
+```
+
+**Solution:**
+```bash
+# For localhost with custom port
+ssh-keygen -f ~/.ssh/known_hosts -R '[127.0.0.1]:2222'
+
+# For regular host
+ssh-keygen -f ~/.ssh/known_hosts -R '192.168.1.100'
+```
+
 ## Quick Start Testing
 
 ### Step 1: Build the Application

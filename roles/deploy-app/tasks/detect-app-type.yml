@@ -101,6 +101,21 @@
   set_fact:
     app_entry_file: "{{ app_entry_file_override | default(app_entry_file_detected | default('index.js')) }}"
 
+- name: Detect required Node.js version from package.json
+  set_fact:
+    required_node_version: >-
+      {%- if package_json is defined and package_json.engines is defined and package_json.engines.node is defined -%}
+        {{ package_json.engines.node | regex_replace('[^0-9.]', '') | regex_replace('^([0-9]+).*', '\\1') }}
+      {%- else -%}
+        20
+      {%- endif -%}
+  when: package_json is defined
+
+- name: Set default Node.js version if not detected
+  set_fact:
+    required_node_version: "20"
+  when: required_node_version is not defined
+
 - name: Display detected configuration
   debug:
     msg:
@@ -108,4 +123,5 @@
       - "Package Manager: {{ package_manager | default('npm') }}"
       - "Needs Build: {{ needs_build | default(false) }}"
       - "Entry File: {{ app_entry_file | default('N/A') }}"
+      - "Node.js Version: {{ required_node_version }}"
       - "Has package.json: {{ package_json_file.stat.exists }}"

@@ -2,9 +2,9 @@
   "docker-web-01": {
     "name": "docker-web-01",
     "state": "failed",
-    "last_action": "check",
-    "last_update": "2025-11-12T01:05:36.446368363+01:00",
-    "error_message": "Cannot check: server not deployed yet. Deploy first.",
+    "last_action": "deploy",
+    "last_update": "2025-11-17T04:19:45.248626963+01:00",
+    "error_message": "Health check failed: curl failed: exit status 7",
     "ready_checks": {
       "ip_valid": false,
       "ssh_key_exists": false,

@@ -36,7 +36,7 @@ func NewOrchestrator(environment string, statusMgr *status.Manager) (*Orchestrat
 		scriptExecutor: NewScriptExecutor(environment),
 		environment:    environment,
 		stopChan:       make(chan struct{}),
-		useScript:      true, // Use deploy.sh by default
+		useScript:      false, // Use native Go ansible execution
 	}, nil
 }
 

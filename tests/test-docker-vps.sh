@@ -213,6 +213,9 @@ EOF
 ---
 # Test Docker Environment Variables
 
+# Allow root login for Docker test environment (NEVER use in production!)
+allow_root_login: true
+
 # Override app port for testing
 app_port: 3000
 

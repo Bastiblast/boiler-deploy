@@ -124,6 +124,7 @@ func (g *Generator) GenerateGroupVarsYAML(env Environment) ([]byte, error) {
 		
 		// SSH Configuration
 		"ssh_port": 22,
+		"allow_root_login": true,  // Allow root login for initial provisioning
 		
 		// Node.js Configuration
 		"nodejs_version": nodeVersion,

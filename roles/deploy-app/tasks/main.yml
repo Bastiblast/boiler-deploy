@@ -31,18 +31,67 @@
 - name: Detect application type
   include_tasks: detect-app-type.yml
 
+# Install Node.js version required by the project
+- name: Check if required Node.js version is installed
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm ls {{ required_node_version }} | grep -q "{{ required_node_version }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  register: node_version_check
+  ignore_errors: yes
+  changed_when: false
+
+- name: Install required Node.js version via NVM
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm install {{ required_node_version }}
+    nvm alias default {{ required_node_version }}
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: node_version_check.rc != 0
+
+- name: Install global packages (PM2 and package managers)
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    npm install -g pm2 pnpm yarn
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: node_version_check.rc != 0
+
+- name: Setup PM2 startup script
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    pm2 startup systemd -u {{ deploy_user }} --hp /home/{{ deploy_user }}
+  args:
+    creates: /etc/systemd/system/pm2-{{ deploy_user }}.service
+  ignore_errors: yes
+
 # Install dependencies based on package manager
 - name: Install dependencies with npm
-  npm:
-    path: "{{ release_path }}"
-    production: yes
-    state: present
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    npm install --production
+  args:
+    chdir: "{{ release_path }}"
   become: yes
   become_user: "{{ deploy_user }}"
   when: package_manager | default('npm') == 'npm'
 
 - name: Install dependencies with pnpm (production only for standard apps)
-  shell: pnpm install --prod
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    pnpm install --prod
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -52,7 +101,11 @@
     - app_type | default('nodejs') not in ['nextjs', 'nuxtjs']
 
 - name: Install dependencies with pnpm (all deps for framework apps)
-  shell: pnpm install --frozen-lockfile
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    pnpm install --frozen-lockfile
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -62,7 +115,11 @@
     - app_type | default('nodejs') in ['nextjs', 'nuxtjs']
 
 - name: Verify TypeScript installation for Next.js with TS config
-  shell: pnpm list typescript || pnpm add -D typescript
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    pnpm list typescript || pnpm add -D typescript
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -74,7 +131,11 @@
   ignore_errors: yes
 
 - name: Install dependencies with yarn
-  shell: yarn install --production
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    yarn install --production
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -83,7 +144,11 @@
 
 # Build application if needed
 - name: Build application with npm
-  shell: npm run build
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    npm run build
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -93,7 +158,11 @@
     - package_manager | default('npm') == 'npm'
 
 - name: Build application with pnpm
-  shell: pnpm run build
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    pnpm run build
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -103,7 +172,11 @@
     - package_manager | default('npm') == 'pnpm'
 
 - name: Build application with yarn
-  shell: yarn build
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    yarn build
   args:
     chdir: "{{ release_path }}"
   become: yes
@@ -158,6 +231,9 @@
 
 - name: Start or reload application with PM2
   shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
     cd {{ app_current_dir }}
     {% if pm2_running.rc == 0 %}
     pm2 reload ecosystem.config.js
@@ -167,8 +243,6 @@
     pm2 save
   become: yes
   become_user: "{{ deploy_user }}"
-  environment:
-    PATH: "/usr/bin:{{ ansible_env.PATH }}"
 
 - name: Wait for application to start
   wait_for:
