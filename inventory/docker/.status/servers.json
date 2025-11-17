@@ -3,7 +3,7 @@
     "name": "docker-web-01",
     "state": "provisioned",
     "last_action": "provision",
-    "last_update": "2025-11-17T04:37:15.633395725+01:00",
+    "last_update": "2025-11-17T04:39:57.306736571+01:00",
     "ready_checks": {
       "ip_valid": false,
       "ssh_key_exists": false,
