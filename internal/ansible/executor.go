@@ -120,14 +120,20 @@ func (e *Executor) parseProgress(line string, progressChan chan<- string) {
 	switch {
 	case strings.HasPrefix(line, "PLAY ["):
 		playName := strings.TrimPrefix(line, "PLAY [")
-		playName = strings.TrimSuffix(playName, "]")
-		playName = strings.TrimSpace(strings.Split(playName, "*")[0])
+		// Remove everything after the closing bracket
+		if idx := strings.Index(playName, "]"); idx != -1 {
+			playName = playName[:idx]
+		}
+		playName = strings.TrimSpace(playName)
 		progressChan <- fmt.Sprintf("▶️  Starting: %s", playName)
 		
 	case strings.HasPrefix(line, "TASK ["):
 		taskName := strings.TrimPrefix(line, "TASK [")
-		taskName = strings.TrimSuffix(taskName, "]")
-		taskName = strings.TrimSpace(strings.Split(taskName, "*")[0])
+		// Remove everything after the closing bracket
+		if idx := strings.Index(taskName, "]"); idx != -1 {
+			taskName = taskName[:idx]
+		}
+		taskName = strings.TrimSpace(taskName)
 		
 		// Translate common task names to French descriptions
 		taskName = e.translateTaskName(taskName)

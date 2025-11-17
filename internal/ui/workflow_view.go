@@ -10,6 +10,7 @@ import (
 	"github.com/bastiblast/boiler-deploy/internal/logging"
 	"github.com/bastiblast/boiler-deploy/internal/status"
 	"github.com/bastiblast/boiler-deploy/internal/storage"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -32,6 +33,8 @@ type WorkflowView struct {
 	autoRefresh     bool
 	realtimeLogs    []string // Live streaming output from ansible
 	maxRealtimeLogs int
+	logsViewport    viewport.Model
+	logsReady       bool
 }
 
 type tickMsg time.Time
@@ -52,8 +55,13 @@ func NewWorkflowView() (*WorkflowView, error) {
 		progress:        make(map[string]string),
 		autoRefresh:     true,
 		realtimeLogs:    make([]string, 0),
-		maxRealtimeLogs: 15, // Keep last 15 log lines for better visibility
+		maxRealtimeLogs: 100, // Keep more logs for scrolling
+		logsViewport:    viewport.New(120, 10), // Initial size, will be updated
+		logsReady:       true, // Set to true immediately
 	}
+	
+	// Initialize viewport content immediately
+	wv.updateLogsViewport()
 
 	if err := wv.loadEnvironment(); err != nil {
 		return nil, err
@@ -117,6 +125,39 @@ func (wv *WorkflowView) onProgress(serverName, message string) {
 	if len(wv.realtimeLogs) > wv.maxRealtimeLogs {
 		wv.realtimeLogs = wv.realtimeLogs[len(wv.realtimeLogs)-wv.maxRealtimeLogs:]
 	}
+	
+	// Update viewport content
+	wv.updateLogsViewport()
+}
+
+func (wv *WorkflowView) updateLogsViewport() {
+	if !wv.logsReady {
+		return
+	}
+	
+	var b strings.Builder
+	
+	if len(wv.realtimeLogs) == 0 {
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		b.WriteString(dimStyle.Render("Waiting for actions...") + "\n")
+	} else {
+		for _, line := range wv.realtimeLogs {
+			// Truncate very long lines
+			displayLine := line
+			maxWidth := wv.logsViewport.Width - 4
+			if maxWidth > 0 && len(displayLine) > maxWidth {
+				displayLine = displayLine[:maxWidth-3] + "..."
+			}
+			
+			// Apply different styles based on content
+			styledLine := wv.styleLogLine(displayLine)
+			b.WriteString(styledLine + "\n")
+		}
+	}
+	
+	wv.logsViewport.SetContent(b.String())
+	// Auto-scroll to bottom on new content
+	wv.logsViewport.GotoBottom()
 }
 
 func (wv *WorkflowView) refreshStatuses() {
@@ -136,7 +177,20 @@ func tickCmd() tea.Cmd {
 }
 
 func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// Update viewport size when terminal is resized
+		if !wv.logsReady {
+			wv.logsViewport = viewport.New(msg.Width, 10)
+			wv.logsReady = true
+		} else {
+			wv.logsViewport.Width = msg.Width
+		}
+		wv.updateLogsViewport()
+		return wv, nil
+		
 	case tea.KeyMsg:
 		if wv.showLogs {
 			return wv.handleLogsKeys(msg)
@@ -146,6 +200,7 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		if wv.autoRefresh {
 			wv.refreshStatuses()
+			wv.updateLogsViewport() // Update viewport content on refresh
 		}
 		return wv, tickCmd()
 
@@ -158,10 +213,14 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return wv, nil
 	}
 
-	return wv, nil
+	// Update viewport for scrolling
+	wv.logsViewport, cmd = wv.logsViewport.Update(msg)
+	return wv, cmd
 }
 
 func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	
 	switch msg.String() {
 	case "q", "esc":
 		return wv, tea.Quit
@@ -172,6 +231,15 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		wv.cursor = 0
 		wv.loadEnvironment()
 		return wv, nil
+		
+	// Logs viewport scrolling
+	case "pgup":
+		wv.logsViewport, cmd = wv.logsViewport.Update(msg)
+		return wv, cmd
+		
+	case "pgdown":
+		wv.logsViewport, cmd = wv.logsViewport.Update(msg)
+		return wv, cmd
 
 	case "up", "k":
 		if wv.cursor > 0 {
@@ -371,12 +439,10 @@ func (wv *WorkflowView) renderMain() string {
 	queue := wv.renderQueue()
 	b.WriteString(queue + "\n")
 	
-	// Add realtime logs section
-	if len(wv.realtimeLogs) > 0 {
-		b.WriteString("\n")
-		logsSection := wv.renderRealtimeLogs()
-		b.WriteString(logsSection)
-	}
+	// Always show realtime logs section
+	b.WriteString("\n")
+	logsSection := wv.renderRealtimeLogs()
+	b.WriteString(logsSection)
 
 	return b.String()
 }
@@ -515,12 +581,14 @@ func (wv *WorkflowView) formatStatus(st *status.ServerStatus) string {
 
 func (wv *WorkflowView) renderControls() string {
 	controls := []string{
+		"[↑↓] Navigate",
 		"[Space] Select",
 		"[a] Select All",
 		"[v] Validate",
 		"[p] Provision",
 		"[d] Deploy",
 		"[c] Check",
+		"[PgUp/PgDn] Scroll Logs",
 		"[l] Logs",
 		"[r] Refresh",
 		"[s] Start/Stop",
@@ -551,24 +619,21 @@ func (wv *WorkflowView) renderRealtimeLogs() string {
 		Foreground(lipgloss.Color("cyan")).
 		Padding(0, 1)
 	
-	b.WriteString(headerStyle.Render("📡 Live Output") + "\n")
+	b.WriteString(headerStyle.Render("📡 Live Output (PgUp/PgDown to scroll)") + "\n")
 	b.WriteString(strings.Repeat("─", 120) + "\n")
 	
-	if len(wv.realtimeLogs) == 0 {
-		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-		b.WriteString(dimStyle.Render("  Waiting for actions...") + "\n")
-	} else {
-		for _, line := range wv.realtimeLogs {
-			// Truncate very long lines
-			displayLine := line
-			if len(displayLine) > 118 {
-				displayLine = displayLine[:115] + "..."
-			}
-			
-			// Apply different styles based on content
-			styledLine := wv.styleLogLine(displayLine)
-			b.WriteString("  " + styledLine + "\n")
-		}
+	// Render viewport with scrollable logs
+	b.WriteString(wv.logsViewport.View())
+	
+	// Show scroll position indicator if there's content to scroll
+	if wv.logsViewport.TotalLineCount() > wv.logsViewport.Height {
+		scrollInfo := fmt.Sprintf(" [%d/%d lines] ", 
+			wv.logsViewport.YOffset+wv.logsViewport.Height,
+			wv.logsViewport.TotalLineCount())
+		infoStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true)
+		b.WriteString("\n" + infoStyle.Render(scrollInfo))
 	}
 	
 	return b.String()
