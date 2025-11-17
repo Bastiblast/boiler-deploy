@@ -122,22 +122,34 @@ func (e *Executor) parseProgress(line string, progressChan chan<- string) {
 		playName := strings.TrimPrefix(line, "PLAY [")
 		playName = strings.TrimSuffix(playName, "]")
 		playName = strings.TrimSpace(strings.Split(playName, "*")[0])
-		progressChan <- fmt.Sprintf("▶️  Play: %s", playName)
+		progressChan <- fmt.Sprintf("▶️  Starting: %s", playName)
 		
 	case strings.HasPrefix(line, "TASK ["):
 		taskName := strings.TrimPrefix(line, "TASK [")
 		taskName = strings.TrimSuffix(taskName, "]")
 		taskName = strings.TrimSpace(strings.Split(taskName, "*")[0])
+		
+		// Translate common task names to French descriptions
+		taskName = e.translateTaskName(taskName)
+		
 		if len(taskName) > 60 {
 			taskName = taskName[:57] + "..."
 		}
 		progressChan <- fmt.Sprintf("⚙️  %s", taskName)
 		
 	case strings.HasPrefix(line, "ok:"):
-		progressChan <- "  ✓ OK"
+		// Don't show "ok" - only show changes to reduce noise
+		return
 		
 	case strings.HasPrefix(line, "changed:"):
-		progressChan <- "  ✓ Changed"
+		// Extract what was changed if possible
+		parts := strings.Fields(line)
+		if len(parts) > 1 {
+			serverName := strings.Trim(parts[1], "[]")
+			progressChan <- fmt.Sprintf("  ✓ Modified on %s", serverName)
+		} else {
+			progressChan <- "  ✓ Configuration updated"
+		}
 		
 	case strings.HasPrefix(line, "failed:") || strings.HasPrefix(line, "fatal:"):
 		// Try to extract error message
@@ -147,32 +159,81 @@ func (e *Executor) parseProgress(line string, progressChan chan<- string) {
 			if len(msg) > 80 {
 				msg = msg[:77] + "..."
 			}
-			progressChan <- fmt.Sprintf("  ❌ %s", msg)
+			progressChan <- fmt.Sprintf("  ❌ Error: %s", msg)
 		} else {
-			progressChan <- "  ❌ Failed"
+			progressChan <- "  ❌ Task failed"
 		}
 		
 	case strings.HasPrefix(line, "skipping:"):
-		progressChan <- "  ⊘ Skipped"
+		// Don't show skipped tasks to reduce noise
+		return
 		
 	case strings.Contains(line, "UNREACHABLE"):
-		progressChan <- "  ⚠️  Host unreachable"
+		progressChan <- "  ⚠️  Server unreachable - check SSH connection"
 		
 	case strings.HasPrefix(line, "PLAY RECAP"):
-		progressChan <- "📊 Execution summary"
+		progressChan <- "📊 Summary of execution"
 		
-	case strings.Contains(line, "WARNING"):
-		if len(line) > 100 {
-			line = line[:97] + "..."
+	case strings.Contains(line, "WARNING") && !strings.Contains(line, "Skipping"):
+		// Filter out skipping warnings as they're not important
+		if !strings.Contains(line, "as it is not a mapping") && 
+		   !strings.Contains(line, "as this is not a valid group") {
+			warningMsg := strings.TrimPrefix(line, "[WARNING]:")
+			warningMsg = strings.TrimSpace(warningMsg)
+			if len(warningMsg) > 80 {
+				warningMsg = warningMsg[:77] + "..."
+			}
+			progressChan <- fmt.Sprintf("⚠️  Warning: %s", warningMsg)
 		}
-		progressChan <- fmt.Sprintf("⚠️  %s", line)
 		
 	case strings.Contains(line, "ERROR"):
-		if len(line) > 100 {
-			line = line[:97] + "..."
+		errorMsg := strings.TrimPrefix(line, "[ERROR]:")
+		errorMsg = strings.TrimSpace(errorMsg)
+		if len(errorMsg) > 80 {
+			errorMsg = errorMsg[:77] + "..."
 		}
-		progressChan <- fmt.Sprintf("❌ %s", line)
+		progressChan <- fmt.Sprintf("❌ Error: %s", errorMsg)
 	}
+}
+
+func (e *Executor) translateTaskName(taskName string) string {
+	translations := map[string]string{
+		"Gathering Facts": "Collecting server information",
+		"Wait for system to become reachable": "Waiting for server connection",
+		"Update apt cache": "Updating package list",
+		"Install required packages": "Installing system packages",
+		"Install Node.js": "Installing Node.js",
+		"Install NVM": "Installing Node Version Manager",
+		"Install PM2 globally": "Installing PM2 process manager",
+		"Create deployment user": "Creating deployment user",
+		"Setup Nginx": "Configuring web server",
+		"Install Nginx": "Installing Nginx web server",
+		"Configure Nginx": "Configuring web server",
+		"Install UFW": "Installing firewall",
+		"Configure UFW": "Configuring firewall",
+		"Install Fail2ban": "Installing Fail2ban security",
+		"Configure Fail2ban": "Configuring Fail2ban",
+		"Clone repository": "Downloading application code",
+		"Install dependencies": "Installing application dependencies",
+		"Build application": "Building application",
+		"Start application": "Starting application with PM2",
+		"Restart Nginx": "Restarting web server",
+		"Enable and start services": "Starting system services",
+	}
+	
+	// Check for exact match first
+	if translated, ok := translations[taskName]; ok {
+		return translated
+	}
+	
+	// Check for partial matches
+	for key, value := range translations {
+		if strings.Contains(taskName, key) {
+			return value
+		}
+	}
+	
+	return taskName
 }
 
 func (e *Executor) Provision(serverName string, progressChan chan<- string) (*ExecutionResult, error) {
