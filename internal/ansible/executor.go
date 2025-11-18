@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bastiblast/boiler-deploy/internal/ssh"
 )
 
 type Executor struct {
@@ -264,4 +266,17 @@ func (e *Executor) HealthCheck(ip string, port int) error {
 	
 	log.Printf("[EXECUTOR] Health check successful (%d bytes)", len(output))
 	return nil
+}
+
+func (e *Executor) TestSSH(ip string, port int, user string, keyPath string) ssh.TestResult {
+	log.Printf("[EXECUTOR] Testing SSH connection to %s:%d with user %s", ip, port, user)
+	result := ssh.TestConnection(ip, port, user, keyPath)
+	
+	if result.Success {
+		log.Printf("[EXECUTOR] SSH test successful: %s", result.Message)
+	} else {
+		log.Printf("[EXECUTOR] SSH test failed: %s", result.Message)
+	}
+	
+	return result
 }

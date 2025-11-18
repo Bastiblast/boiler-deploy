@@ -206,31 +206,77 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 		}
 
 	case status.ActionCheck:
-		log.Printf("[ORCHESTRATOR] Starting health check for %s", action.ServerName)
+		log.Printf("[ORCHESTRATOR] Starting validation check for %s", action.ServerName)
 		
-		currentStatus := o.statusMgr.GetStatus(action.ServerName)
-		if currentStatus.State != status.StateDeployed && currentStatus.State != status.StateProvisioned {
-			log.Printf("[ORCHESTRATOR] Skipping check - server %s not deployed yet (state: %s)", action.ServerName, currentStatus.State)
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Validating configuration...")
+		
+		// Step 1: Validate basic configuration
+		checks := o.statusMgr.ValidateServer(server)
+		if !checks.AllFieldsFilled {
 			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
-				"Cannot check: server not deployed yet. Deploy first.")
+				"Configuration incomplete: missing required fields")
 			close(progressChan)
 			return
 		}
 		
-		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Running health check...")
-		close(progressChan)
-
-		checkPort := 80
-		log.Printf("[ORCHESTRATOR] Checking HTTP on %s:%d", server.IP, checkPort)
-		
-		if err := o.executor.HealthCheck(server.IP, checkPort); err != nil {
-			log.Printf("[ORCHESTRATOR] Health check failed for %s: %v", action.ServerName, err)
+		if !checks.IPValid {
 			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
-				fmt.Sprintf("Check failed: %v", err))
-		} else {
-			log.Printf("[ORCHESTRATOR] Health check passed for %s", action.ServerName)
-			o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
+				"Invalid IP address format")
+			close(progressChan)
+			return
 		}
+		
+		if !checks.PortValid {
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
+				"Invalid SSH port (must be 1-65535)")
+			close(progressChan)
+			return
+		}
+		
+		if !checks.SSHKeyExists {
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
+				fmt.Sprintf("SSH key not found at: %s", server.SSHKeyPath))
+			close(progressChan)
+			return
+		}
+		
+		// Step 2: Test SSH connection
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Testing SSH connection...")
+		log.Printf("[ORCHESTRATOR] Testing SSH connection to %s:%d", server.IP, server.Port)
+		
+		sshTest := o.executor.TestSSH(server.IP, server.Port, "root", server.SSHKeyPath)
+		if !sshTest.Success {
+			log.Printf("[ORCHESTRATOR] SSH test failed for %s: %s", action.ServerName, sshTest.Message)
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
+				fmt.Sprintf("SSH connection failed: %s", sshTest.Message))
+			close(progressChan)
+			return
+		}
+		
+		log.Printf("[ORCHESTRATOR] SSH test passed for %s", action.ServerName)
+		
+		// Step 3: Check if deployed (try HTTP health check)
+		currentStatus := o.statusMgr.GetStatus(action.ServerName)
+		if currentStatus.State == status.StateDeployed {
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Checking application...")
+			
+			checkPort := 80
+			log.Printf("[ORCHESTRATOR] Checking HTTP on %s:%d", server.IP, checkPort)
+			
+			if err := o.executor.HealthCheck(server.IP, checkPort); err != nil {
+				log.Printf("[ORCHESTRATOR] Application health check failed for %s: %v", action.ServerName, err)
+				o.statusMgr.UpdateStatus(action.ServerName, status.StateProvisioned, action.Action, "")
+			} else {
+				log.Printf("[ORCHESTRATOR] Application is responding for %s", action.ServerName)
+				o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
+			}
+		} else {
+			// Server is validated but not deployed yet
+			log.Printf("[ORCHESTRATOR] Validation passed for %s (not deployed yet)", action.ServerName)
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateReady, action.Action, "")
+		}
+		
+		close(progressChan)
 	}
 }
 
