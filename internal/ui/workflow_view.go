@@ -439,10 +439,10 @@ func (wv *WorkflowView) renderServerTable() string {
 	var b strings.Builder
 
 	header := lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("%-4s %-20s %-15s %-8s %-10s %-20s %-30s",
-			"Sel", "Name", "IP", "Port", "Type", "Status", "Progress"))
+		fmt.Sprintf("  %-2s %-20s %-15s %-7s %-7s %-20s %-45s",
+			"✓", "Name", "IP", "Port", "Type", "Status", "Progress"))
 	b.WriteString(header + "\n")
-	b.WriteString(strings.Repeat("─", 120) + "\n")
+	b.WriteString(strings.Repeat("─", 125) + "\n")
 
 	for i, server := range wv.servers {
 		sel := " "
@@ -460,13 +460,18 @@ func (wv *WorkflowView) renderServerTable() string {
 			st = &status.ServerStatus{State: status.StateUnknown}
 		}
 
-		statusStr := wv.formatStatus(st)
+		statusStr, progressDetails := wv.formatStatus(st)
 		progressStr := wv.progress[server.Name]
+		if progressStr == "" {
+			progressStr = progressDetails
+		} else if progressDetails != "" {
+			progressStr = progressDetails + " | " + progressStr
+		}
 		if progressStr == "" {
 			progressStr = "-"
 		}
 
-		line := fmt.Sprintf("%s %-2s %-20s %-15s %-8d %-10s %-20s %-30s",
+		line := fmt.Sprintf("%s %-2s %-20s %-15s %-7d %-7s %-20s %-45s",
 			cursor, sel, server.Name, server.IP, server.Port, server.Type, statusStr, progressStr)
 
 		if i == wv.cursor {
@@ -479,56 +484,33 @@ func (wv *WorkflowView) renderServerTable() string {
 	return b.String()
 }
 
-func (wv *WorkflowView) formatStatus(st *status.ServerStatus) string {
+func (wv *WorkflowView) formatStatus(st *status.ServerStatus) (string, string) {
 	var icon string
+	var progressDetails string
+	
 	switch st.State {
 	case status.StateReady:
 		icon = "✓ Ready"
-		// Show ready checks details
-		if st.ReadyChecks.IPValid && st.ReadyChecks.SSHKeyExists && st.ReadyChecks.PortValid && st.ReadyChecks.AllFieldsFilled {
-			icon = "✓ Ready"
-		} else {
-			details := ""
-			if !st.ReadyChecks.IPValid {
-				details += "IP!"
-			}
-			if !st.ReadyChecks.SSHKeyExists {
-				if details != "" { details += " " }
-				details += "SSH!"
-			}
-			if !st.ReadyChecks.PortValid {
-				if details != "" { details += " " }
-				details += "Port!"
-			}
-			if !st.ReadyChecks.AllFieldsFilled {
-				if details != "" { details += " " }
-				details += "Fields!"
-			}
-			if details != "" {
-				icon = "✓ Ready (" + details + ")"
-			}
-		}
+		// When validated successfully, show "All checks passed" in progress
+		progressDetails = "All checks passed"
 	case status.StateNotReady:
 		icon = "✗ Not Ready"
-		// Show what's missing
-		details := ""
+		// Show what's missing in progress column
+		details := []string{}
 		if !st.ReadyChecks.IPValid {
-			details += "IP!"
+			details = append(details, "Invalid IP")
 		}
 		if !st.ReadyChecks.SSHKeyExists {
-			if details != "" { details += " " }
-			details += "SSH!"
+			details = append(details, "SSH key not found")
 		}
 		if !st.ReadyChecks.PortValid {
-			if details != "" { details += " " }
-			details += "Port!"
+			details = append(details, "Invalid port")
 		}
 		if !st.ReadyChecks.AllFieldsFilled {
-			if details != "" { details += " " }
-			details += "Fields!"
+			details = append(details, "Missing fields")
 		}
-		if details != "" {
-			icon = "✗ Not Ready (" + details + ")"
+		if len(details) > 0 {
+			progressDetails = strings.Join(details, ", ")
 		}
 	case status.StateProvisioning:
 		icon = "⚡ Provisioning"
@@ -542,17 +524,16 @@ func (wv *WorkflowView) formatStatus(st *status.ServerStatus) string {
 		icon = "🔍 Verifying"
 	case status.StateFailed:
 		icon = "✗ Failed"
+		if st.ErrorMessage != "" {
+			progressDetails = st.ErrorMessage
+		}
 	case "validating":
 		icon = "⏳ Validating"
 	default:
 		icon = "? Unknown"
 	}
 
-	if st.ErrorMessage != "" && st.State != status.StateReady && st.State != status.StateNotReady {
-		icon += " (" + st.ErrorMessage[:min(30, len(st.ErrorMessage))] + ")"
-	}
-
-	return icon
+	return icon, progressDetails
 }
 
 func (wv *WorkflowView) renderControls() string {
