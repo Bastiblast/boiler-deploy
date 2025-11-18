@@ -16,8 +16,7 @@ import (
 )
 
 type WorkflowView struct {
-	environments    []string
-	currentEnvIndex int
+	environment     string
 	servers         []*inventory.Server
 	statuses        map[string]*status.ServerStatus
 	selectedServers map[string]bool
@@ -48,9 +47,12 @@ func NewWorkflowView() (*WorkflowView, error) {
 		return nil, fmt.Errorf("no environments found")
 	}
 
+	return NewWorkflowViewWithEnv(envs[0])
+}
+
+func NewWorkflowViewWithEnv(envName string) (*WorkflowView, error) {
 	wv := &WorkflowView{
-		environments:    envs,
-		currentEnvIndex: 0,
+		environment:     envName,
 		selectedServers: make(map[string]bool),
 		progress:        make(map[string]string),
 		autoRefresh:     true,
@@ -71,10 +73,8 @@ func NewWorkflowView() (*WorkflowView, error) {
 }
 
 func (wv *WorkflowView) loadEnvironment() error {
-	envName := wv.environments[wv.currentEnvIndex]
-
 	stor := storage.NewStorage(".")
-	env, err := stor.LoadEnvironment(envName)
+	env, err := stor.LoadEnvironment(wv.environment)
 	if err != nil {
 		return err
 	}
@@ -84,20 +84,20 @@ func (wv *WorkflowView) loadEnvironment() error {
 		wv.servers[i] = &env.Servers[i]
 	}
 
-	statusMgr, err := status.NewManager(envName)
+	statusMgr, err := status.NewManager(wv.environment)
 	if err != nil {
 		return err
 	}
 	wv.statusMgr = statusMgr
 
-	orchestrator, err := ansible.NewOrchestrator(envName, statusMgr)
+	orchestrator, err := ansible.NewOrchestrator(wv.environment, statusMgr)
 	if err != nil {
 		return err
 	}
 	wv.orchestrator = orchestrator
 	wv.orchestrator.SetProgressCallback(wv.onProgress)
 
-	wv.logReader = logging.NewReader(envName)
+	wv.logReader = logging.NewReader(wv.environment)
 
 	wv.refreshStatuses()
 	
@@ -223,14 +223,8 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	
 	switch msg.String() {
 	case "q", "esc":
-		return wv, tea.Quit
-
-	case "tab":
-		wv.currentEnvIndex = (wv.currentEnvIndex + 1) % len(wv.environments)
-		wv.selectedServers = make(map[string]bool)
-		wv.cursor = 0
-		wv.loadEnvironment()
-		return wv, nil
+		// Return to workflow selector
+		return NewWorkflowSelector(), nil
 		
 	// Logs viewport scrolling
 	case "pgup":
@@ -424,11 +418,8 @@ func (wv *WorkflowView) View() string {
 func (wv *WorkflowView) renderMain() string {
 	var b strings.Builder
 
-	title := titleStyle.Render(fmt.Sprintf("📋 Working with Inventory - %s", wv.environments[wv.currentEnvIndex]))
+	title := titleStyle.Render(fmt.Sprintf("📋 Working with Inventory - %s", wv.environment))
 	b.WriteString(title + "\n\n")
-
-	envTabs := wv.renderEnvironmentTabs()
-	b.WriteString(envTabs + "\n\n")
 
 	table := wv.renderServerTable()
 	b.WriteString(table + "\n\n")
@@ -445,18 +436,6 @@ func (wv *WorkflowView) renderMain() string {
 	b.WriteString(logsSection)
 
 	return b.String()
-}
-
-func (wv *WorkflowView) renderEnvironmentTabs() string {
-	tabs := make([]string, len(wv.environments))
-	for i, env := range wv.environments {
-		if i == wv.currentEnvIndex {
-			tabs[i] = selectedItemStyle.Render(" " + env + " ")
-		} else {
-			tabs[i] = helpStyle.Render(" " + env + " ")
-		}
-	}
-	return strings.Join(tabs, " ")
 }
 
 func (wv *WorkflowView) renderServerTable() string {
@@ -593,8 +572,7 @@ func (wv *WorkflowView) renderControls() string {
 		"[r] Refresh",
 		"[s] Start/Stop",
 		"[x] Clear Queue",
-		"[Tab] Switch Env",
-		"[q] Quit",
+		"[Esc] Back",
 	}
 	return helpStyle.Render(strings.Join(controls, " | "))
 }

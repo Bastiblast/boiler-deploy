@@ -72,12 +72,8 @@ func (m MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Manage environment
 				return NewEnvironmentSelector(), nil
 			case 2:
-				// Work with inventory
-				wv, err := NewWorkflowView()
-				if err != nil {
-					return m, nil
-				}
-				return wv, wv.Init()
+				// Work with inventory - go to environment selector first
+				return NewWorkflowSelector(), nil
 			case 3:
 				// Quit
 				return m, tea.Quit
