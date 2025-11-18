@@ -3,13 +3,13 @@
     "name": "docker-web-01",
     "state": "failed",
     "last_action": "check",
-    "last_update": "2025-11-18T15:28:34.825845043+01:00",
+    "last_update": "2025-11-18T15:35:22.021236021+01:00",
     "error_message": "Cannot check: server not deployed yet. Deploy first.",
     "ready_checks": {
-      "ip_valid": false,
-      "ssh_key_exists": false,
-      "port_valid": false,
-      "all_fields_filled": false
+      "ip_valid": true,
+      "ssh_key_exists": true,
+      "port_valid": true,
+      "all_fields_filled": true
     }
   }
 }

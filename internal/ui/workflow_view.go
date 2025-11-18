@@ -171,7 +171,7 @@ func (wv *WorkflowView) Init() tea.Cmd {
 }
 
 func tickCmd() tea.Cmd {
-	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
@@ -272,16 +272,23 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			wv.statusMgr.UpdateReadyChecks(server.Name, checks)
 		}
 		
-		// Refresh to show updated status
+		// Immediate refresh for instant feedback
 		wv.refreshStatuses()
+		wv.updateLogsViewport()
 		
 		return wv, nil
 
 	case "p":
 		wv.provisionSelected()
+		// Immediate refresh for instant feedback
+		wv.refreshStatuses()
+		wv.updateLogsViewport()
 
 	case "d":
 		wv.deploySelected()
+		// Immediate refresh for instant feedback
+		wv.refreshStatuses()
+		wv.updateLogsViewport()
 
 	case "c":
 		selected := wv.getSelectedServerNames()
@@ -301,7 +308,9 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		
 		// Queue checks
 		wv.orchestrator.QueueCheck(selected, 0)
+		// Immediate refresh for instant feedback
 		wv.refreshStatuses()
+		wv.updateLogsViewport()
 
 	case "l":
 		if wv.cursor < len(wv.servers) {
@@ -354,7 +363,6 @@ func (wv *WorkflowView) provisionSelected() {
 	}
 	
 	wv.orchestrator.QueueProvision(names, 0)
-	wv.refreshStatuses()
 }
 
 func (wv *WorkflowView) deploySelected() {
@@ -369,7 +377,6 @@ func (wv *WorkflowView) deploySelected() {
 	}
 	
 	wv.orchestrator.QueueDeploy(names, 0)
-	wv.refreshStatuses()
 }
 
 
