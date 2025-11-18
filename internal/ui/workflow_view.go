@@ -262,15 +262,27 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "v":
 		selected := wv.getSelectedServers()
+		names := wv.getSelectedServerNames()
 		if len(selected) == 0 {
 			return wv, nil
 		}
 		
-		// Run validation synchronously (it's fast, no need for goroutine or intermediate state)
+		// Step 1: Run local validation (fields check)
 		for _, server := range selected {
 			checks := wv.statusMgr.ValidateServer(server)
 			wv.statusMgr.UpdateReadyChecks(server.Name, checks)
 		}
+		
+		// Step 2: Queue network validation (SSH + connectivity check)
+		if !wv.orchestrator.IsRunning() {
+			wv.orchestrator.Start(wv.servers)
+		}
+		
+		for _, name := range names {
+			wv.statusMgr.UpdateStatus(name, status.StateVerifying, status.ActionCheck, "Validating...")
+		}
+		
+		wv.orchestrator.QueueCheck(names, 0)
 		
 		// Immediate refresh for instant feedback
 		wv.refreshStatuses()
@@ -286,28 +298,6 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "d":
 		wv.deploySelected()
-		// Immediate refresh for instant feedback
-		wv.refreshStatuses()
-		wv.updateLogsViewport()
-
-	case "c":
-		selected := wv.getSelectedServerNames()
-		if len(selected) == 0 {
-			return wv, nil
-		}
-		
-		// Ensure orchestrator is running
-		if !wv.orchestrator.IsRunning() {
-			wv.orchestrator.Start(wv.servers)
-		}
-		
-		// Update status to Verifying immediately for visual feedback
-		for _, name := range selected {
-			wv.statusMgr.UpdateStatus(name, status.StateVerifying, status.ActionCheck, "Queued...")
-		}
-		
-		// Queue checks
-		wv.orchestrator.QueueCheck(selected, 0)
 		// Immediate refresh for instant feedback
 		wv.refreshStatuses()
 		wv.updateLogsViewport()
@@ -570,10 +560,9 @@ func (wv *WorkflowView) renderControls() string {
 		"[↑↓] Navigate",
 		"[Space] Select",
 		"[a] Select All",
-		"[v] Validate",
+		"[v] Validate & Check",
 		"[p] Provision",
 		"[d] Deploy",
-		"[c] Check",
 		"[PgUp/PgDn] Scroll Logs",
 		"[l] Logs",
 		"[r] Refresh",
