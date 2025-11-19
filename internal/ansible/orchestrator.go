@@ -56,10 +56,13 @@ func (o *Orchestrator) QueueProvision(serverNames []string, priority int) {
 }
 
 func (o *Orchestrator) QueueProvisionWithTags(serverNames []string, priority int, tags string) {
+	log.Printf("[ORCHESTRATOR] QueueProvisionWithTags called with %d servers: %v, tags: %s", len(serverNames), serverNames, tags)
 	for _, name := range serverNames {
+		log.Printf("[ORCHESTRATOR] Adding provision action for server: %s with tags: %s", name, tags)
 		item := o.queue.Add(name, status.ActionProvision, priority)
 		item.Tags = tags
 	}
+	log.Printf("[ORCHESTRATOR] Queue size after adding provisions: %d", o.GetQueueSize())
 }
 
 func (o *Orchestrator) QueueDeploy(serverNames []string, priority int) {

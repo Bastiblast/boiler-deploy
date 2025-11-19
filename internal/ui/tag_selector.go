@@ -91,8 +91,9 @@ func (m TagSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m TagSelector) View() string {
+	// Use a minimum width if not set yet
 	if m.width == 0 {
-		return "Loading..."
+		m.width = 80 // Fallback to reasonable default
 	}
 
 	var b strings.Builder

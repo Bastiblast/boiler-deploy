@@ -37,6 +37,8 @@ type WorkflowView struct {
 	tagSelector     *TagSelector
 	showTagSelector bool
 	pendingAction   string // "provision" or "deploy"
+	width           int
+	height          int
 }
 
 type tickMsg time.Time
@@ -182,6 +184,31 @@ func tickCmd() tea.Cmd {
 func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	
+	// Always handle WindowSizeMsg first to ensure tag selector gets proper dimensions
+	if wsMsg, ok := msg.(tea.WindowSizeMsg); ok {
+		// Store terminal dimensions
+		wv.width = wsMsg.Width
+		wv.height = wsMsg.Height
+		
+		// Update viewport size when terminal is resized
+		if !wv.logsReady {
+			wv.logsViewport = viewport.New(wsMsg.Width, 10)
+			wv.logsReady = true
+		} else {
+			wv.logsViewport.Width = wsMsg.Width
+		}
+		wv.updateLogsViewport()
+		
+		// If tag selector is visible, pass the message to it
+		if wv.showTagSelector && wv.tagSelector != nil {
+			updatedSelector, _ := wv.tagSelector.Update(msg)
+			if selector, ok := updatedSelector.(TagSelector); ok {
+				*wv.tagSelector = selector
+			}
+		}
+		return wv, nil
+	}
+	
 	// Handle tag selector
 	if wv.showTagSelector && wv.tagSelector != nil {
 		updatedSelector, cmd := wv.tagSelector.Update(msg)
@@ -191,11 +218,14 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if selector.IsConfirmed() {
 				// Get selected tags and execute action
 				tags := selector.GetTagString()
+				fmt.Printf("[DEBUG] Tag selector confirmed. Tags: %s, Action: %s\n", tags, wv.pendingAction)
 				wv.showTagSelector = false
 				wv.executeActionWithTags(wv.pendingAction, tags)
 				wv.tagSelector = nil
+				wv.pendingAction = ""
 				return wv, cmd
 			} else if selector.IsCancelled() {
+				fmt.Println("[DEBUG] Tag selector cancelled")
 				wv.showTagSelector = false
 				wv.tagSelector = nil
 				wv.pendingAction = ""
@@ -206,16 +236,6 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		// Update viewport size when terminal is resized
-		if !wv.logsReady {
-			wv.logsViewport = viewport.New(msg.Width, 10)
-			wv.logsReady = true
-		} else {
-			wv.logsViewport.Width = msg.Width
-		}
-		wv.updateLogsViewport()
-		return wv, nil
 		
 	case tea.KeyMsg:
 		if wv.showLogs {
@@ -318,17 +338,27 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "p":
 		// Open tag selector for provision
+		fmt.Println("[DEBUG] 'p' key pressed")
 		if len(wv.getSelectedServers()) > 0 {
+			fmt.Printf("[DEBUG] Opening tag selector (width=%d, height=%d)\n", wv.width, wv.height)
 			selector := NewTagSelector("provision")
+			// Initialize with current terminal dimensions
+			selector.width = wv.width
+			selector.height = wv.height
 			wv.tagSelector = &selector
 			wv.showTagSelector = true
 			wv.pendingAction = "provision"
+		} else {
+			fmt.Println("[DEBUG] No servers selected")
 		}
 
 	case "d":
 		// Open tag selector for deploy
 		if len(wv.getSelectedServers()) > 0 {
 			selector := NewTagSelector("deploy")
+			// Initialize with current terminal dimensions
+			selector.width = wv.width
+			selector.height = wv.height
 			wv.tagSelector = &selector
 			wv.showTagSelector = true
 			wv.pendingAction = "deploy"
@@ -375,23 +405,30 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (wv *WorkflowView) executeActionWithTags(action, tags string) {
 	names := wv.getSelectedServerNames()
+	fmt.Printf("[DEBUG] executeActionWithTags called: action=%s, tags=%s, servers=%v\n", action, tags, names)
+	
 	if len(names) == 0 {
+		fmt.Println("[DEBUG] No servers selected, returning")
 		return
 	}
 	
 	// Ensure orchestrator is running
 	if !wv.orchestrator.IsRunning() {
+		fmt.Println("[DEBUG] Starting orchestrator")
 		wv.orchestrator.Start(wv.servers)
 	}
 	
 	switch action {
 	case "provision":
+		fmt.Printf("[DEBUG] Queueing provision with tags: %s\n", tags)
 		wv.orchestrator.QueueProvisionWithTags(names, 0, tags)
 	case "deploy":
+		fmt.Printf("[DEBUG] Queueing deploy with tags: %s\n", tags)
 		wv.orchestrator.QueueDeployWithTags(names, 0, tags)
 	}
 	
 	// Immediate refresh for instant feedback
+	fmt.Println("[DEBUG] Refreshing statuses and updating logs")
 	wv.refreshStatuses()
 	wv.updateLogsViewport()
 }
