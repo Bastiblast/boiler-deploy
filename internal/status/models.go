@@ -52,6 +52,7 @@ type QueuedAction struct {
 	Priority    int        `json:"priority"`
 	QueuedAt    time.Time  `json:"queued_at"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
+	Tags        string     `json:"tags,omitempty"`
 }
 
 type ExecutionLog struct {

@@ -3,20 +3,24 @@
   hosts: webservers
   become: yes
   serial: 1  # Deploy one server at a time
+  tags: [deploy, application]
 
   pre_tasks:
     - name: Check if application directory exists
       stat:
         path: "{{ app_dir }}"
       register: app_dir_stat
+      tags: [always]
 
     - name: Fail if not provisioned
       fail:
         msg: "Server not provisioned. Run provision.yml first!"
       when: not app_dir_stat.stat.exists
+      tags: [always]
 
   roles:
-    - deploy-app
+    - role: deploy-app
+      tags: [deploy, app, code]
 
   post_tasks:
     - name: Health check
@@ -27,3 +31,4 @@
       delay: 5
       when: app_port is defined
       ignore_errors: yes
+      tags: [health, check, verify]

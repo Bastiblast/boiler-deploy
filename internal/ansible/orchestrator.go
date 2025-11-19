@@ -52,16 +52,26 @@ func (o *Orchestrator) ValidateInventory(servers []*inventory.Server) {
 }
 
 func (o *Orchestrator) QueueProvision(serverNames []string, priority int) {
+	o.QueueProvisionWithTags(serverNames, priority, "")
+}
+
+func (o *Orchestrator) QueueProvisionWithTags(serverNames []string, priority int, tags string) {
 	for _, name := range serverNames {
-		o.queue.Add(name, status.ActionProvision, priority)
+		item := o.queue.Add(name, status.ActionProvision, priority)
+		item.Tags = tags
 	}
 }
 
 func (o *Orchestrator) QueueDeploy(serverNames []string, priority int) {
+	o.QueueDeployWithTags(serverNames, priority, "")
+}
+
+func (o *Orchestrator) QueueDeployWithTags(serverNames []string, priority int, tags string) {
 	log.Printf("[ORCHESTRATOR] QueueDeploy called with %d servers: %v", len(serverNames), serverNames)
 	for _, name := range serverNames {
 		log.Printf("[ORCHESTRATOR] Adding deploy action for server: %s", name)
-		o.queue.Add(name, status.ActionDeploy, priority)
+		item := o.queue.Add(name, status.ActionDeploy, priority)
+		item.Tags = tags
 	}
 	log.Printf("[ORCHESTRATOR] Queue size after adding deploys: %d", o.GetQueueSize())
 }
@@ -162,8 +172,12 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 			log.Printf("[ORCHESTRATOR] Using deploy.sh for provision")
 			result, err = o.scriptExecutor.RunAction("provision", action.ServerName, progressChan)
 		} else {
-			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly")
-			result, err = o.executor.Provision(action.ServerName, progressChan)
+			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly with tags: %s", action.Tags)
+			if action.Tags != "" {
+				result, err = o.executor.ProvisionWithTags(action.ServerName, action.Tags, progressChan)
+			} else {
+				result, err = o.executor.Provision(action.ServerName, progressChan)
+			}
 		}
 		close(progressChan)
 
@@ -187,8 +201,12 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 			log.Printf("[ORCHESTRATOR] Using deploy.sh for deploy")
 			result, err = o.scriptExecutor.RunAction("deploy", action.ServerName, progressChan)
 		} else {
-			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly")
-			result, err = o.executor.Deploy(action.ServerName, progressChan)
+			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly with tags: %s", action.Tags)
+			if action.Tags != "" {
+				result, err = o.executor.DeployWithTags(action.ServerName, action.Tags, progressChan)
+			} else {
+				result, err = o.executor.Deploy(action.ServerName, progressChan)
+			}
 		}
 		close(progressChan)
 

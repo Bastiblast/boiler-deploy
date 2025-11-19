@@ -3,45 +3,58 @@
   hosts: all
   become: yes
   gather_facts: yes
+  tags: [always]
 
   pre_tasks:
     - name: Wait for system to become reachable
       wait_for_connection:
         timeout: 300
+      tags: [always]
 
     - name: Gather facts
       setup:
+      tags: [always]
 
   roles:
-    - common
-    - security
+    - role: common
+      tags: [common, base, system]
+    - role: security
+      tags: [security, firewall, ssh]
 
 - name: Setup database servers
   hosts: dbservers
   become: yes
+  tags: [database, db, postgresql]
 
   roles:
-    - postgresql
+    - role: postgresql
+      tags: [postgresql, db]
 
 - name: Setup web servers
   hosts: webservers
   become: yes
+  tags: [web, webserver]
 
   roles:
-    - nodejs
-    - nginx
+    - role: nodejs
+      tags: [nodejs, node, runtime]
+    - role: nginx
+      tags: [nginx, webserver, proxy]
 
 - name: Setup monitoring
   hosts: all
   become: yes
+  tags: [monitoring, observability]
 
   roles:
-    - monitoring
+    - role: monitoring
+      tags: [monitoring, metrics]
 
 - name: Display summary
   hosts: all
   gather_facts: no
   run_once: yes
+  tags: [always]
 
   tasks:
     - name: Show provisioning summary
@@ -50,3 +63,4 @@
           - "=========================================="
           - "Provisioning completed successfully!"
           - "=========================================="
+      tags: [always]

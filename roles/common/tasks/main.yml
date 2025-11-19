@@ -3,16 +3,19 @@
   apt:
     update_cache: yes
     cache_valid_time: 3600
+  tags: [packages, apt, update]
 
 - name: Wait for any running apt processes
   shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
   changed_when: false
+  tags: [packages, apt]
 
 - name: Upgrade all packages
   apt:
     upgrade: dist
     autoremove: yes
     autoclean: yes
+  tags: [packages, apt, upgrade]
 
 - name: Install common packages
   apt:
@@ -36,12 +39,14 @@
       - tzdata
     state: present
   ignore_errors: yes
+  tags: [packages, tools]
 
 - name: Set timezone
   timezone:
     name: "{{ timezone | default('UTC') }}"
   when: timezone is defined and timezone != ""
   ignore_errors: yes
+  tags: [config, timezone]
 
 - name: Create deploy user
   user:
@@ -50,6 +55,7 @@
     shell: /bin/bash
     create_home: yes
     state: present
+  tags: [users, deploy]
 
 - name: Add SSH key for deploy user
   authorized_key:
@@ -57,6 +63,7 @@
     key: "{{ lookup('file', ssh_key_path) }}"
     state: present
   when: ssh_key_path is defined and ssh_key_path != ""
+  tags: [users, deploy, ssh]
 
 - name: Allow deploy user to sudo without password
   lineinfile:
@@ -65,6 +72,7 @@
     create: yes
     mode: '0440'
     validate: 'visudo -cf %s'
+  tags: [users, deploy, sudo]
 
 - name: Configure systemd journal retention
   lineinfile:
@@ -75,3 +83,4 @@
     - { regexp: '^#?SystemMaxUse=', line: 'SystemMaxUse=500M' }
     - { regexp: '^#?MaxRetentionSec=', line: 'MaxRetentionSec=1month' }
   notify: restart journald
+  tags: [config, logs, systemd]

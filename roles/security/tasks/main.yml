@@ -4,6 +4,7 @@
     name: ufw
     state: present
   when: enable_firewall | default(true)
+  tags: [firewall, ufw, install]
 
 - name: Configure UFW defaults
   ufw:
@@ -13,6 +14,7 @@
     - { direction: 'incoming', policy: 'deny' }
     - { direction: 'outgoing', policy: 'allow' }
   when: enable_firewall | default(true)
+  tags: [firewall, ufw, config]
 
 - name: Allow SSH
   ufw:
@@ -20,6 +22,7 @@
     port: "{{ ssh_port }}"
     proto: tcp
   when: enable_firewall | default(true)
+  tags: [firewall, ufw, ssh]
 
 - name: Allow HTTP
   ufw:
@@ -27,6 +30,7 @@
     port: '80'
     proto: tcp
   when: enable_firewall | default(true) and 'webservers' in group_names
+  tags: [firewall, ufw, http]
 
 - name: Allow HTTPS
   ufw:
@@ -34,6 +38,7 @@
     port: '443'
     proto: tcp
   when: enable_firewall | default(true) and 'webservers' in group_names
+  tags: [firewall, ufw, https]
 
 - name: Allow PostgreSQL from web servers
   ufw:
@@ -43,6 +48,7 @@
     from_ip: "{{ hostvars[item].ansible_host }}"
   loop: "{{ groups['webservers'] }}"
   when: enable_firewall | default(true) and 'dbservers' in group_names
+  tags: [firewall, ufw, postgresql]
 
 - name: Allow Prometheus access
   ufw:
@@ -51,6 +57,7 @@
     proto: tcp
     comment: 'Prometheus'
   when: enable_firewall | default(true) and 'monitoring' in group_names
+  tags: [firewall, ufw, monitoring]
 
 - name: Allow Grafana access
   ufw:
@@ -59,6 +66,7 @@
     proto: tcp
     comment: 'Grafana'
   when: enable_firewall | default(true) and 'monitoring' in group_names
+  tags: [firewall, ufw, monitoring]
 
 - name: Allow Node Exporter
   ufw:
@@ -66,17 +74,20 @@
     port: '9100'
     proto: tcp
   when: enable_firewall | default(true)
+  tags: [firewall, ufw, monitoring]
 
 - name: Enable UFW
   ufw:
     state: enabled
   when: enable_firewall | default(true)
+  tags: [firewall, ufw, enable]
 
 - name: Install fail2ban
   apt:
     name: fail2ban
     state: present
   when: enable_firewall | default(true)
+  tags: [fail2ban, install]
 
 - name: Configure fail2ban local jail
   template:
@@ -87,6 +98,7 @@
     mode: '0644'
   notify: restart fail2ban
   when: enable_firewall | default(true)
+  tags: [fail2ban, config]
 
 - name: Ensure fail2ban is enabled and started
   systemd:
@@ -94,6 +106,7 @@
     enabled: yes
     state: started
   when: enable_firewall | default(true)
+  tags: [fail2ban, service]
 
 - name: Configure SSH - disable password authentication
   lineinfile:
@@ -106,6 +119,7 @@
     - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
     - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
   notify: restart sshd
+  tags: [ssh, config, hardening]
 
 - name: Configure SSH - disable root login (production only)
   lineinfile:
@@ -115,6 +129,7 @@
     state: present
   notify: restart sshd
   when: not (allow_root_login | default(false))
+  tags: [ssh, config, hardening, root]
 
 - name: Install unattended-upgrades
   apt:
@@ -123,6 +138,7 @@
       - apt-listchanges
     state: present
   ignore_errors: yes
+  tags: [updates, auto-updates, install]
 
 - name: Configure unattended-upgrades
   template:
@@ -131,6 +147,7 @@
     owner: root
     group: root
     mode: '0644'
+  tags: [updates, auto-updates, config]
 
 - name: Enable automatic updates
   lineinfile:
@@ -141,3 +158,4 @@
     - 'APT::Periodic::Update-Package-Lists "1";'
     - 'APT::Periodic::Unattended-Upgrade "1";'
     - 'APT::Periodic::AutocleanInterval "7";'
+  tags: [updates, auto-updates, config]

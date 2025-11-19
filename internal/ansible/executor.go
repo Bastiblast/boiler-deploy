@@ -36,6 +36,10 @@ type ExecutionResult struct {
 }
 
 func (e *Executor) RunPlaybook(playbook string, serverName string, progressChan chan<- string) (*ExecutionResult, error) {
+	return e.RunPlaybookWithTags(playbook, serverName, "", progressChan)
+}
+
+func (e *Executor) RunPlaybookWithTags(playbook string, serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
 	timestamp := time.Now().Format("20060102_150405")
 	action := strings.TrimSuffix(filepath.Base(playbook), ".yml")
 	logFile := filepath.Join(e.logDir, fmt.Sprintf("%s_%s_%s.log", serverName, action, timestamp))
@@ -51,14 +55,25 @@ func (e *Executor) RunPlaybook(playbook string, serverName string, progressChan 
 
 	// Send initial progress
 	if progressChan != nil {
-		progressChan <- fmt.Sprintf("🚀 Starting %s playbook...", action)
+		if tags != "" {
+			progressChan <- fmt.Sprintf("🚀 Starting %s playbook with tags: %s...", action, tags)
+		} else {
+			progressChan <- fmt.Sprintf("🚀 Starting %s playbook...", action)
+		}
 	}
 
-	cmd := exec.Command("ansible-playbook",
+	args := []string{
 		"-i", inventoryPath,
 		playbookPath,
 		"--limit", serverName,
-	)
+	}
+	
+	// Add tags if specified
+	if tags != "" {
+		args = append(args, "--tags", tags)
+	}
+
+	cmd := exec.Command("ansible-playbook", args...)
 
 	// Don't use JSON callback as it can hang - use default callback and parse text
 	cmd.Env = append(os.Environ(), "ANSIBLE_FORCE_COLOR=false")
@@ -245,11 +260,19 @@ func (e *Executor) translateTaskName(taskName string) string {
 }
 
 func (e *Executor) Provision(serverName string, progressChan chan<- string) (*ExecutionResult, error) {
-	return e.RunPlaybook("provision.yml", serverName, progressChan)
+	return e.ProvisionWithTags(serverName, "", progressChan)
+}
+
+func (e *Executor) ProvisionWithTags(serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
+	return e.RunPlaybookWithTags("provision.yml", serverName, tags, progressChan)
 }
 
 func (e *Executor) Deploy(serverName string, progressChan chan<- string) (*ExecutionResult, error) {
-	return e.RunPlaybook("deploy.yml", serverName, progressChan)
+	return e.DeployWithTags(serverName, "", progressChan)
+}
+
+func (e *Executor) DeployWithTags(serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
+	return e.RunPlaybookWithTags("deploy.yml", serverName, tags, progressChan)
 }
 
 func (e *Executor) HealthCheck(ip string, port int) error {

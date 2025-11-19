@@ -34,6 +34,9 @@ type WorkflowView struct {
 	maxRealtimeLogs int
 	logsViewport    viewport.Model
 	logsReady       bool
+	tagSelector     *TagSelector
+	showTagSelector bool
+	pendingAction   string // "provision" or "deploy"
 }
 
 type tickMsg time.Time
@@ -179,6 +182,29 @@ func tickCmd() tea.Cmd {
 func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	
+	// Handle tag selector
+	if wv.showTagSelector && wv.tagSelector != nil {
+		updatedSelector, cmd := wv.tagSelector.Update(msg)
+		if selector, ok := updatedSelector.(TagSelector); ok {
+			*wv.tagSelector = selector
+			
+			if selector.IsConfirmed() {
+				// Get selected tags and execute action
+				tags := selector.GetTagString()
+				wv.showTagSelector = false
+				wv.executeActionWithTags(wv.pendingAction, tags)
+				wv.tagSelector = nil
+				return wv, cmd
+			} else if selector.IsCancelled() {
+				wv.showTagSelector = false
+				wv.tagSelector = nil
+				wv.pendingAction = ""
+				return wv, cmd
+			}
+		}
+		return wv, cmd
+	}
+	
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Update viewport size when terminal is resized
@@ -291,16 +317,22 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return wv, nil
 
 	case "p":
-		wv.provisionSelected()
-		// Immediate refresh for instant feedback
-		wv.refreshStatuses()
-		wv.updateLogsViewport()
+		// Open tag selector for provision
+		if len(wv.getSelectedServers()) > 0 {
+			selector := NewTagSelector("provision")
+			wv.tagSelector = &selector
+			wv.showTagSelector = true
+			wv.pendingAction = "provision"
+		}
 
 	case "d":
-		wv.deploySelected()
-		// Immediate refresh for instant feedback
-		wv.refreshStatuses()
-		wv.updateLogsViewport()
+		// Open tag selector for deploy
+		if len(wv.getSelectedServers()) > 0 {
+			selector := NewTagSelector("deploy")
+			wv.tagSelector = &selector
+			wv.showTagSelector = true
+			wv.pendingAction = "deploy"
+		}
 
 	case "l":
 		if wv.cursor < len(wv.servers) {
@@ -340,6 +372,29 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 
+
+func (wv *WorkflowView) executeActionWithTags(action, tags string) {
+	names := wv.getSelectedServerNames()
+	if len(names) == 0 {
+		return
+	}
+	
+	// Ensure orchestrator is running
+	if !wv.orchestrator.IsRunning() {
+		wv.orchestrator.Start(wv.servers)
+	}
+	
+	switch action {
+	case "provision":
+		wv.orchestrator.QueueProvisionWithTags(names, 0, tags)
+	case "deploy":
+		wv.orchestrator.QueueDeployWithTags(names, 0, tags)
+	}
+	
+	// Immediate refresh for instant feedback
+	wv.refreshStatuses()
+	wv.updateLogsViewport()
+}
 
 func (wv *WorkflowView) provisionSelected() {
 	names := wv.getSelectedServerNames()
@@ -406,6 +461,9 @@ func (wv *WorkflowView) loadLogs() {
 }
 
 func (wv *WorkflowView) View() string {
+	if wv.showTagSelector && wv.tagSelector != nil {
+		return wv.tagSelector.View()
+	}
 	if wv.showLogs {
 		return wv.renderLogs()
 	}

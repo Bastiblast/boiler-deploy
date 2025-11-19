@@ -57,17 +57,22 @@ func (m *Manager) Load() error {
 
 	m.statuses = statuses
 	
-	// Reset any "in-progress" or "failed" states on load
+	// Reset only "in-progress" states on load (preserve stable states like Provisioned/Deployed)
 	needsSave := false
 	for _, status := range m.statuses {
 		if status.State == StateProvisioning || 
 		   status.State == StateDeploying || 
-		   status.State == StateVerifying ||
-		   status.State == StateFailed {
-			log.Printf("[STATUS] Resetting state for %s from %v to unknown", status.Name, status.State)
+		   status.State == StateVerifying {
+			log.Printf("[STATUS] Resetting in-progress state for %s from %v to unknown", status.Name, status.State)
 			status.State = StateUnknown
 			status.ErrorMessage = ""
 			needsSave = true
+		} else if status.State == StateFailed {
+			// Keep failed state but log it
+			log.Printf("[STATUS] Preserving failed state for %s: %s", status.Name, status.ErrorMessage)
+		} else if status.State == StateProvisioned || status.State == StateDeployed {
+			// Keep stable states
+			log.Printf("[STATUS] Preserving stable state for %s: %v", status.Name, status.State)
 		}
 	}
 	

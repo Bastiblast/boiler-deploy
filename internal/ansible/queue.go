@@ -77,7 +77,7 @@ func (q *Queue) save() error {
 	return os.WriteFile(q.queueFile, data, 0644)
 }
 
-func (q *Queue) Add(serverName string, action status.ActionType, priority int) string {
+func (q *Queue) Add(serverName string, action status.ActionType, priority int) *status.QueuedAction {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -88,6 +88,7 @@ func (q *Queue) Add(serverName string, action status.ActionType, priority int) s
 		Action:     action,
 		Priority:   priority,
 		QueuedAt:   time.Now(),
+		Tags:       "",
 	}
 
 	log.Printf("[QUEUE] Adding action: %s for server %s (priority: %d, id: %s)", action, serverName, priority, id)
@@ -96,7 +97,7 @@ func (q *Queue) Add(serverName string, action status.ActionType, priority int) s
 	q.save()
 	log.Printf("[QUEUE] Action added, queue size now: %d", len(q.actions))
 
-	return id
+	return queuedAction
 }
 
 func (q *Queue) sort() {
