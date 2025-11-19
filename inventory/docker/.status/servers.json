@@ -2,9 +2,9 @@
   "docker-web-01": {
     "name": "docker-web-01",
     "state": "failed",
-    "last_action": "provision",
-    "last_update": "2025-11-19T16:23:37.284202954+01:00",
-    "error_message": "exit status 2",
+    "last_action": "deploy",
+    "last_update": "2025-11-19T16:55:49.020271186+01:00",
+    "error_message": "Server must be provisioned first",
     "ready_checks": {
       "ip_valid": false,
       "ssh_key_exists": false,
