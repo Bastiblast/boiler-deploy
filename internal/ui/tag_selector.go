@@ -22,11 +22,30 @@ type TagSelector struct {
 }
 
 func NewTagSelector(actionType string) TagSelector {
+	return NewTagSelectorWithDefaults(actionType, nil)
+}
+
+func NewTagSelectorWithDefaults(actionType string, defaultTags []string) TagSelector {
 	var categories []ansible.TagCategory
 	if actionType == "provision" {
 		categories = ansible.GetProvisionTags()
 	} else {
 		categories = ansible.GetDeployTags()
+	}
+
+	// Pre-select tags based on defaults
+	if defaultTags != nil && len(defaultTags) > 0 {
+		for i := range categories {
+			for j := range categories[i].Tags {
+				tagName := categories[i].Tags[j].Name
+				for _, dt := range defaultTags {
+					if dt == tagName || dt == "all" {
+						categories[i].Tags[j].Selected = true
+						break
+					}
+				}
+			}
+		}
 	}
 
 	return TagSelector{

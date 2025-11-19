@@ -54,4 +54,10 @@ var (
 	successStyle = lipgloss.NewStyle().
 			Foreground(successColor).
 			Bold(true)
+
+	// Info/subtitle style
+	infoStyle = lipgloss.NewStyle().
+			Foreground(primaryColor).
+			Bold(true).
+			MarginBottom(1)
 )

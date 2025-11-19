@@ -35,6 +35,7 @@ func NewMainMenu() MainMenu {
 			"Create new environment",
 			"Manage existing environment",
 			"Work with your inventory",
+			"Configuration options",
 			"Quit",
 		},
 		environments: envDisplay,
@@ -75,6 +76,9 @@ func (m MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Work with inventory - go to environment selector first
 				return NewWorkflowSelector(), nil
 			case 3:
+				// Configuration options
+				return NewConfigSelector(), nil
+			case 4:
 				// Quit
 				return m, tea.Quit
 			}

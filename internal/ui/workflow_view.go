@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bastiblast/boiler-deploy/internal/ansible"
+	"github.com/bastiblast/boiler-deploy/internal/config"
 	"github.com/bastiblast/boiler-deploy/internal/inventory"
 	"github.com/bastiblast/boiler-deploy/internal/logging"
 	"github.com/bastiblast/boiler-deploy/internal/status"
@@ -39,6 +40,8 @@ type WorkflowView struct {
 	pendingAction   string // "provision" or "deploy"
 	width           int
 	height          int
+	configMgr       *config.Manager
+	configOpts      *config.ConfigOptions
 }
 
 type tickMsg time.Time
@@ -56,15 +59,24 @@ func NewWorkflowView() (*WorkflowView, error) {
 }
 
 func NewWorkflowViewWithEnv(envName string) (*WorkflowView, error) {
+	// Load configuration for this environment
+	configMgr := config.NewManager("inventory")
+	configOpts, err := configMgr.Load(envName)
+	if err != nil {
+		configOpts = config.DefaultConfig()
+	}
+	
 	wv := &WorkflowView{
 		environment:     envName,
 		selectedServers: make(map[string]bool),
 		progress:        make(map[string]string),
 		autoRefresh:     true,
 		realtimeLogs:    make([]string, 0),
-		maxRealtimeLogs: 100, // Keep more logs for scrolling
+		maxRealtimeLogs: configOpts.LogRetention,
 		logsViewport:    viewport.New(120, 10), // Initial size, will be updated
 		logsReady:       true, // Set to true immediately
+		configMgr:       configMgr,
+		configOpts:      configOpts,
 	}
 	
 	// Initialize viewport content immediately
@@ -172,11 +184,11 @@ func (wv *WorkflowView) refreshStatuses() {
 
 func (wv *WorkflowView) Init() tea.Cmd {
 	wv.orchestrator.Start(wv.servers)
-	return tickCmd()
+	return wv.tickCmd()
 }
 
-func tickCmd() tea.Cmd {
-	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+func (wv *WorkflowView) tickCmd() tea.Cmd {
+	return tea.Tick(wv.configOpts.RefreshInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
@@ -226,14 +238,14 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Execute action and force immediate refresh
 				wv.executeActionWithTags(action, tags)
 				wv.refreshStatuses()
-				return wv, tickCmd()
+				return wv, wv.tickCmd()
 			} else if selector.IsCancelled() {
 				fmt.Println("[DEBUG] Tag selector cancelled")
 				wv.showTagSelector = false
 				wv.tagSelector = nil
 				wv.pendingAction = ""
 				wv.refreshStatuses()
-				return wv, tickCmd()
+				return wv, wv.tickCmd()
 			}
 		}
 		return wv, cmd
@@ -252,7 +264,7 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			wv.refreshStatuses()
 			wv.updateLogsViewport() // Update viewport content on refresh
 		}
-		return wv, tickCmd()
+		return wv, wv.tickCmd()
 
 	case statusUpdateMsg:
 		wv.refreshStatuses()
@@ -345,7 +357,7 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		fmt.Println("[DEBUG] 'p' key pressed")
 		if len(wv.getSelectedServers()) > 0 {
 			fmt.Printf("[DEBUG] Opening tag selector (width=%d, height=%d)\n", wv.width, wv.height)
-			selector := NewTagSelector("provision")
+			selector := NewTagSelectorWithDefaults("provision", wv.configOpts.ProvisioningTags)
 			// Initialize with current terminal dimensions
 			selector.width = wv.width
 			selector.height = wv.height
@@ -359,7 +371,7 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		// Open tag selector for deploy
 		if len(wv.getSelectedServers()) > 0 {
-			selector := NewTagSelector("deploy")
+			selector := NewTagSelectorWithDefaults("deploy", wv.configOpts.DeploymentTags)
 			// Initialize with current terminal dimensions
 			selector.width = wv.width
 			selector.height = wv.height
