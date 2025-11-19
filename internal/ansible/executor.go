@@ -40,9 +40,19 @@ func (e *Executor) RunPlaybook(playbook string, serverName string, progressChan 
 }
 
 func (e *Executor) RunPlaybookWithTags(playbook string, serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
+	return e.RunPlaybookWithOptions(playbook, serverName, tags, false, progressChan)
+}
+
+func (e *Executor) RunPlaybookWithOptions(playbook string, serverName string, tags string, checkMode bool, progressChan chan<- string) (*ExecutionResult, error) {
 	timestamp := time.Now().Format("20060102_150405")
 	action := strings.TrimSuffix(filepath.Base(playbook), ".yml")
-	logFile := filepath.Join(e.logDir, fmt.Sprintf("%s_%s_%s.log", serverName, action, timestamp))
+	
+	// Add "check" suffix to log file in check mode
+	logSuffix := ""
+	if checkMode {
+		logSuffix = "_check"
+	}
+	logFile := filepath.Join(e.logDir, fmt.Sprintf("%s_%s%s_%s.log", serverName, action, logSuffix, timestamp))
 
 	logWriter, err := os.Create(logFile)
 	if err != nil {
@@ -55,10 +65,14 @@ func (e *Executor) RunPlaybookWithTags(playbook string, serverName string, tags 
 
 	// Send initial progress
 	if progressChan != nil {
+		modeStr := ""
+		if checkMode {
+			modeStr = " (dry-run mode)"
+		}
 		if tags != "" {
-			progressChan <- fmt.Sprintf("🚀 Starting %s playbook with tags: %s...", action, tags)
+			progressChan <- fmt.Sprintf("🚀 Starting %s playbook with tags: %s%s...", action, tags, modeStr)
 		} else {
-			progressChan <- fmt.Sprintf("🚀 Starting %s playbook...", action)
+			progressChan <- fmt.Sprintf("🚀 Starting %s playbook%s...", action, modeStr)
 		}
 	}
 
@@ -71,6 +85,11 @@ func (e *Executor) RunPlaybookWithTags(playbook string, serverName string, tags 
 	// Add tags if specified
 	if tags != "" {
 		args = append(args, "--tags", tags)
+	}
+	
+	// Add check and diff flags for dry-run mode
+	if checkMode {
+		args = append(args, "--check", "--diff")
 	}
 
 	cmd := exec.Command("ansible-playbook", args...)
@@ -264,7 +283,11 @@ func (e *Executor) Provision(serverName string, progressChan chan<- string) (*Ex
 }
 
 func (e *Executor) ProvisionWithTags(serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
-	return e.RunPlaybookWithTags("provision.yml", serverName, tags, progressChan)
+	return e.RunPlaybookWithOptions("provision.yml", serverName, tags, false, progressChan)
+}
+
+func (e *Executor) ProvisionCheck(serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
+	return e.RunPlaybookWithOptions("provision.yml", serverName, tags, true, progressChan)
 }
 
 func (e *Executor) Deploy(serverName string, progressChan chan<- string) (*ExecutionResult, error) {
@@ -272,7 +295,11 @@ func (e *Executor) Deploy(serverName string, progressChan chan<- string) (*Execu
 }
 
 func (e *Executor) DeployWithTags(serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
-	return e.RunPlaybookWithTags("deploy.yml", serverName, tags, progressChan)
+	return e.RunPlaybookWithOptions("deploy.yml", serverName, tags, false, progressChan)
+}
+
+func (e *Executor) DeployCheck(serverName string, tags string, progressChan chan<- string) (*ExecutionResult, error) {
+	return e.RunPlaybookWithOptions("deploy.yml", serverName, tags, true, progressChan)
 }
 
 func (e *Executor) HealthCheck(ip string, port int) error {

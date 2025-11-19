@@ -169,7 +169,26 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 
 	switch action.Action {
 	case status.ActionProvision:
-		o.statusMgr.UpdateStatus(action.ServerName, status.StateProvisioning, action.Action, "Starting...")
+		// Step 1: Dry-run check
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateProvisioning, action.Action, "Checking configuration (dry-run)...")
+		log.Printf("[ORCHESTRATOR] Running provision dry-run check for %s with tags: %s", action.ServerName, action.Tags)
+		
+		checkResult, checkErr := o.executor.ProvisionCheck(action.ServerName, action.Tags, progressChan)
+		if checkErr != nil || !checkResult.Success {
+			errorMsg := "Dry-run check failed"
+			if checkResult != nil && checkResult.ErrorMessage != "" {
+				errorMsg = checkResult.ErrorMessage
+			}
+			log.Printf("[ORCHESTRATOR] Provision dry-run failed for %s: %s", action.ServerName, errorMsg)
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, errorMsg)
+			close(progressChan)
+			return
+		}
+		
+		log.Printf("[ORCHESTRATOR] Provision dry-run passed for %s, proceeding with actual provisioning", action.ServerName)
+		
+		// Step 2: Real execution
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateProvisioning, action.Action, "Applying configuration...")
 		
 		if o.useScript {
 			log.Printf("[ORCHESTRATOR] Using deploy.sh for provision")
@@ -198,7 +217,26 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 			return
 		}
 
-		o.statusMgr.UpdateStatus(action.ServerName, status.StateDeploying, action.Action, "Starting...")
+		// Step 1: Dry-run check
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateDeploying, action.Action, "Checking deployment (dry-run)...")
+		log.Printf("[ORCHESTRATOR] Running deploy dry-run check for %s with tags: %s", action.ServerName, action.Tags)
+		
+		checkResult, checkErr := o.executor.DeployCheck(action.ServerName, action.Tags, progressChan)
+		if checkErr != nil || !checkResult.Success {
+			errorMsg := "Dry-run check failed"
+			if checkResult != nil && checkResult.ErrorMessage != "" {
+				errorMsg = checkResult.ErrorMessage
+			}
+			log.Printf("[ORCHESTRATOR] Deploy dry-run failed for %s: %s", action.ServerName, errorMsg)
+			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, errorMsg)
+			close(progressChan)
+			return
+		}
+		
+		log.Printf("[ORCHESTRATOR] Deploy dry-run passed for %s, proceeding with actual deployment", action.ServerName)
+
+		// Step 2: Real execution
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateDeploying, action.Action, "Deploying application...")
 		
 		if o.useScript {
 			log.Printf("[ORCHESTRATOR] Using deploy.sh for deploy")

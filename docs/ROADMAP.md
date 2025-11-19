@@ -491,10 +491,13 @@ internal/
 - Search/filter
 - Better error handling
 
-### v0.3.0 - Planned (Phase 2)
-- Ansible playbook execution
-- Deployment logs
-- Pre/post-deployment checks
+### v0.3.0 - Current (Phase 2 - In Progress)
+- ✅ Ansible playbook execution (Native Go + Tags support)
+- ✅ Deployment logs (Scrollable viewport)
+- ✅ Pre/post-deployment checks (SSH, Health checks)
+- ✅ Dry-run mode (--check --diff before actual execution)
+- 🔄 Real-time status tracking
+- 🔄 Queue management (FIFO)
 
 ### v1.0.0 - Planned (Phase 3)
 - Configuration templates

@@ -220,16 +220,20 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				tags := selector.GetTagString()
 				fmt.Printf("[DEBUG] Tag selector confirmed. Tags: %s, Action: %s\n", tags, wv.pendingAction)
 				wv.showTagSelector = false
-				wv.executeActionWithTags(wv.pendingAction, tags)
 				wv.tagSelector = nil
+				action := wv.pendingAction
 				wv.pendingAction = ""
-				return wv, cmd
+				// Execute action and force immediate refresh
+				wv.executeActionWithTags(action, tags)
+				wv.refreshStatuses()
+				return wv, tickCmd()
 			} else if selector.IsCancelled() {
 				fmt.Println("[DEBUG] Tag selector cancelled")
 				wv.showTagSelector = false
 				wv.tagSelector = nil
 				wv.pendingAction = ""
-				return wv, cmd
+				wv.refreshStatuses()
+				return wv, tickCmd()
 			}
 		}
 		return wv, cmd
@@ -534,7 +538,7 @@ func (wv *WorkflowView) renderServerTable() string {
 	var b strings.Builder
 
 	header := lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("  %-2s %-20s %-15s %-7s %-7s %-20s %-45s",
+		fmt.Sprintf("  %-2s %-20s %-15s %-7s %-7s %-22s %-43s",
 			"✓", "Name", "IP", "Port", "Type", "Status", "Progress"))
 	b.WriteString(header + "\n")
 	b.WriteString(strings.Repeat("─", 125) + "\n")
@@ -566,7 +570,7 @@ func (wv *WorkflowView) renderServerTable() string {
 			progressStr = "-"
 		}
 
-		line := fmt.Sprintf("%s %-2s %-20s %-15s %-7d %-7s %-20s %-45s",
+		line := fmt.Sprintf("%s %-2s %-20s %-15s %-7d %-7s %-22s %-43s",
 			cursor, sel, server.Name, server.IP, server.Port, server.Type, statusStr, progressStr)
 
 		if i == wv.cursor {
