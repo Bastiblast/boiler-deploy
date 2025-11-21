@@ -155,7 +155,18 @@ func (sd *StateDetector) checkProvisioning(client *ssh.Client, user string) Prov
 	var status ProvisioningStatus
 
 	// Check Node.js installed
-	output, _ := sd.executeCheck(client, "command -v node >/dev/null 2>&1 && echo 'yes' || echo 'no'")
+	// Node.js is installed via NVM, load NVM from possible locations
+	nodeCheckCmd := fmt.Sprintf(`
+		if [ -d "/home/%s/.nvm" ]; then
+			export NVM_DIR="/home/%s/.nvm"
+		elif [ -d "$HOME/.nvm" ]; then
+			export NVM_DIR="$HOME/.nvm"
+		else
+			echo 'no' && exit 0
+		fi
+		[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && command -v node >/dev/null 2>&1 && echo 'yes' || echo 'no'
+	`, user, user)
+	output, _ := sd.executeCheck(client, nodeCheckCmd)
 	status.NodeInstalled = strings.TrimSpace(output) == "yes"
 
 	// Check Nginx installed
@@ -163,12 +174,10 @@ func (sd *StateDetector) checkProvisioning(client *ssh.Client, user string) Prov
 	status.NginxInstalled = strings.TrimSpace(output) == "yes"
 
 	// Check NVM installed
-	// Handle root user (path is /root/.nvm, not /home/root/.nvm)
-	nvmPath := fmt.Sprintf("/home/%s/.nvm", user)
-	if user == "root" {
-		nvmPath = "/root/.nvm"
-	}
-	output, _ = sd.executeCheck(client, fmt.Sprintf("test -d %s && echo 'yes' || echo 'no'", nvmPath))
+	// Try multiple possible NVM locations (aligned with Ansible provisioning)
+	// Priority: /home/user/.nvm (Ansible default) -> $HOME/.nvm (fallback)
+	nvmCheckCmd := fmt.Sprintf("test -d /home/%s/.nvm || test -d $HOME/.nvm && echo 'yes' || echo 'no'", user)
+	output, _ = sd.executeCheck(client, nvmCheckCmd)
 	status.NVMInstalled = strings.TrimSpace(output) == "yes"
 
 	// Check app directory exists
@@ -189,13 +198,17 @@ func (sd *StateDetector) checkDeployment(client *ssh.Client, user string, appPor
 	var status DeploymentStatus
 
 	// Check PM2 running with at least one app
-	// Handle root user (path is /root/.nvm, not /home/root/.nvm)
-	nvmDir := fmt.Sprintf("/home/%s/.nvm", user)
-	if user == "root" {
-		nvmDir = "/root/.nvm"
-	}
-	nvmEnv := fmt.Sprintf("export NVM_DIR=%s && [ -s $NVM_DIR/nvm.sh ] && . $NVM_DIR/nvm.sh", nvmDir)
-	pm2Command := fmt.Sprintf("%s && pm2 list 2>/dev/null | grep -q 'online' && echo 'yes' || echo 'no'", nvmEnv)
+	// Load NVM from possible locations (aligned with Ansible provisioning)
+	pm2Command := fmt.Sprintf(`
+		if [ -d "/home/%s/.nvm" ]; then
+			export NVM_DIR="/home/%s/.nvm"
+		elif [ -d "$HOME/.nvm" ]; then
+			export NVM_DIR="$HOME/.nvm"
+		else
+			echo 'no' && exit 0
+		fi
+		[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && pm2 list 2>/dev/null | grep -q 'online' && echo 'yes' || echo 'no'
+	`, user, user)
 	output, _ := sd.executeCheck(client, pm2Command)
 	status.PM2Running = strings.TrimSpace(output) == "yes"
 
