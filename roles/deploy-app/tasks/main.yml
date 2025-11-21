@@ -221,12 +221,26 @@
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
 
-- name: Check if PM2 is already running the app
-  shell: "pm2 list | grep -q {{ pm2_app_name }}"
+- name: Check if PM2 dump file exists (indicates saved apps)
+  stat:
+    path: "/home/{{ deploy_user }}/.pm2/dump.pm2"
+  register: pm2_dump_file
   become: yes
   become_user: "{{ deploy_user }}"
-  register: pm2_running
+
+- name: Read PM2 dump to check if app exists
+  slurp:
+    src: "/home/{{ deploy_user }}/.pm2/dump.pm2"
+  register: pm2_dump_content
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when: pm2_dump_file.stat.exists
   ignore_errors: yes
+
+- name: Determine if app is already in PM2
+  set_fact:
+    pm2_running:
+      rc: "{{ 0 if (pm2_dump_file.stat.exists and pm2_dump_content.content | default('') | b64decode | regex_search(pm2_app_name)) else 1 }}"
   changed_when: false
 
 - name: Start or reload application with PM2
@@ -250,9 +264,27 @@
     delay: 5
     timeout: 60
 
-- name: Keep only last 5 releases
-  shell: "ls -1dt {{ app_releases_dir }}/* | tail -n +6 | xargs rm -rf"
-  ignore_errors: yes
+- name: Find all releases
+  find:
+    paths: "{{ app_releases_dir }}"
+    file_type: directory
+    recurse: no
+  register: all_releases
+  tags: [deploy, cleanup]
+
+- name: Sort releases by modification time and identify old ones
+  set_fact:
+    old_releases: "{{ (all_releases.files | sort(attribute='mtime', reverse=true))[5:] }}"
+  when: all_releases.files | length > 5
+  tags: [deploy, cleanup]
+
+- name: Remove old releases (keep last 5)
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_releases | default([]) }}"
+  when: old_releases is defined and old_releases | length > 0
+  tags: [deploy, cleanup]
 
 - name: Display deployment info
   debug:

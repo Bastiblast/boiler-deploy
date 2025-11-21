@@ -1,7 +1,12 @@
 ---
-- name: Wait for apt lock
-  shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
+- name: Wait for dpkg lock to be released
+  wait_for:
+    path: /var/lib/dpkg/lock-frontend
+    state: started
+    timeout: 300
   changed_when: false
+  failed_when: false
+  tags: [packages, apt]
 
 - name: Install Nginx
   apt:
