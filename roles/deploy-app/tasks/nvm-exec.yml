@@ -1,0 +1,47 @@
+---
+# NVM Command Execution Wrapper
+# 
+# This task file provides a reusable way to execute commands with NVM environment
+# 
+# Required variables:
+#   - nvm_command: The command to execute (e.g., "npm install", "pm2 start app.js")
+#   - required_node_version: Node.js version to use (inherited from parent)
+#   - deploy_user: User to execute command as (inherited from parent)
+#
+# Optional variables:
+#   - nvm_task_name: Custom task name (default: "Execute command with NVM")
+#   - nvm_chdir: Working directory for command execution
+#   - nvm_creates: File/directory that should exist after command (for idempotency)
+#   - nvm_changed_when: Expression to determine if task changed state (default: true)
+#   - nvm_ignore_errors: Continue on error (default: false)
+#   - nvm_condition: When condition for task execution
+#   - nvm_tags: Additional tags for the task (default: ['nodejs', 'nvm'])
+#
+# Example usage:
+#   - name: Install NPM dependencies
+#     include_tasks: nvm-exec.yml
+#     vars:
+#       nvm_task_name: "Install NPM dependencies"
+#       nvm_command: "npm install --production"
+#       nvm_chdir: "{{ release_path }}"
+#       nvm_tags: ['deploy', 'dependencies']
+#
+
+- name: "{{ nvm_task_name | default('Execute command with NVM') }}"
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    {{ nvm_command }}
+  args:
+    chdir: "{{ nvm_chdir | default(omit) }}"
+    creates: "{{ nvm_creates | default(omit) }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  register: nvm_exec_result
+  changed_when: "{{ nvm_changed_when | default(true) }}"
+  failed_when: 
+    - nvm_exec_result.rc != 0
+    - not (nvm_ignore_errors | default(false))
+  when: "{{ nvm_condition | default(true) }}"
+  tags: "{{ nvm_tags | default(['nodejs', 'nvm']) }}"
