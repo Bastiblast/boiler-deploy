@@ -58,7 +58,6 @@
   vars:
     nvm_task_name: "Install global packages (PM2 and package managers)"
     nvm_command: "npm install -g pm2 pnpm yarn"
-    nvm_condition: "{{ node_version_check.rc != 0 }}"
     nvm_tags: ['nodejs', 'packages', 'global']
 
 - name: Setup PM2 startup script
@@ -77,8 +76,8 @@
     nvm_task_name: "Install dependencies with npm"
     nvm_command: "npm install --production"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ package_manager | default('npm') == 'npm' }}"
-    nvm_tags: ['deploy', 'dependencies', 'npm']
+  when: package_manager | default('npm') == 'npm'
+  tags: ['deploy', 'dependencies', 'npm']
 
 - name: Install dependencies with pnpm (production only for standard apps)
   include_tasks: nvm-exec.yml
@@ -86,8 +85,8 @@
     nvm_task_name: "Install dependencies with pnpm (production only)"
     nvm_command: "pnpm install --prod"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ (package_manager | default('npm') == 'pnpm') and (app_type | default('nodejs') not in ['nextjs', 'nuxtjs']) }}"
-    nvm_tags: ['deploy', 'dependencies', 'pnpm']
+  when: (package_manager | default('npm') == 'pnpm') and (app_type | default('nodejs') not in ['nextjs', 'nuxtjs'])
+  tags: ['deploy', 'dependencies', 'pnpm']
 
 - name: Install dependencies with pnpm (all deps for framework apps)
   include_tasks: nvm-exec.yml
@@ -95,8 +94,8 @@
     nvm_task_name: "Install dependencies with pnpm (all deps for frameworks)"
     nvm_command: "pnpm install --frozen-lockfile"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ (package_manager | default('npm') == 'pnpm') and (app_type | default('nodejs') in ['nextjs', 'nuxtjs']) }}"
-    nvm_tags: ['deploy', 'dependencies', 'pnpm', 'framework']
+  when: (package_manager | default('npm') == 'pnpm') and (app_type | default('nodejs') in ['nextjs', 'nuxtjs'])
+  tags: ['deploy', 'dependencies', 'pnpm', 'framework']
 
 - name: Verify TypeScript installation for Next.js with TS config
   include_tasks: nvm-exec.yml
@@ -104,10 +103,8 @@
     nvm_task_name: "Verify TypeScript installation for Next.js"
     nvm_command: "pnpm list typescript || pnpm add -D typescript"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ (package_manager | default('npm') == 'pnpm') and (app_type | default('nodejs') == 'nextjs') }}"
-    nvm_changed_when: false
-    nvm_ignore_errors: yes
-    nvm_tags: ['deploy', 'typescript', 'nextjs']
+  when: (package_manager | default('npm') == 'pnpm') and (app_type | default('nodejs') == 'nextjs')
+  tags: ['deploy', 'typescript', 'nextjs']
 
 - name: Install dependencies with yarn
   include_tasks: nvm-exec.yml
@@ -115,8 +112,8 @@
     nvm_task_name: "Install dependencies with yarn"
     nvm_command: "yarn install --production"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ package_manager | default('npm') == 'yarn' }}"
-    nvm_tags: ['deploy', 'dependencies', 'yarn']
+  when: package_manager | default('npm') == 'yarn'
+  tags: ['deploy', 'dependencies', 'yarn']
 
 # Build application if needed
 - name: Build application with npm
@@ -125,8 +122,8 @@
     nvm_task_name: "Build application with npm"
     nvm_command: "npm run build"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ (needs_build | default(false)) and (package_manager | default('npm') == 'npm') }}"
-    nvm_tags: ['deploy', 'build', 'npm']
+  when: (needs_build | default(false)) and (package_manager | default('npm') == 'npm')
+  tags: ['deploy', 'build', 'npm']
 
 - name: Build application with pnpm
   include_tasks: nvm-exec.yml
@@ -134,8 +131,8 @@
     nvm_task_name: "Build application with pnpm"
     nvm_command: "pnpm run build"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ (needs_build | default(false)) and (package_manager | default('npm') == 'pnpm') }}"
-    nvm_tags: ['deploy', 'build', 'pnpm']
+  when: (needs_build | default(false)) and (package_manager | default('npm') == 'pnpm')
+  tags: ['deploy', 'build', 'pnpm']
 
 - name: Build application with yarn
   include_tasks: nvm-exec.yml
@@ -143,8 +140,8 @@
     nvm_task_name: "Build application with yarn"
     nvm_command: "yarn build"
     nvm_chdir: "{{ release_path }}"
-    nvm_condition: "{{ (needs_build | default(false)) and (package_manager | default('npm') == 'yarn') }}"
-    nvm_tags: ['deploy', 'build', 'yarn']
+  when: (needs_build | default(false)) and (package_manager | default('npm') == 'yarn')
+  tags: ['deploy', 'build', 'yarn']
 
 # Create PM2 config based on app type
 - name: Create PM2 ecosystem file for Next.js

@@ -35,13 +35,6 @@
     {{ nvm_command }}
   args:
     chdir: "{{ nvm_chdir | default(omit) }}"
-    creates: "{{ nvm_creates | default(omit) }}"
   become: yes
   become_user: "{{ deploy_user }}"
   register: nvm_exec_result
-  changed_when: "{{ nvm_changed_when | default(true) }}"
-  failed_when: 
-    - nvm_exec_result.rc != 0
-    - not (nvm_ignore_errors | default(false))
-  when: "{{ nvm_condition | default(true) }}"
-  tags: "{{ nvm_tags | default(['nodejs', 'nvm']) }}"

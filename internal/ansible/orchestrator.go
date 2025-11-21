@@ -7,20 +7,24 @@ import (
 	"time"
 
 	"github.com/bastiblast/boiler-deploy/internal/inventory"
+	"github.com/bastiblast/boiler-deploy/internal/ssh"
 	"github.com/bastiblast/boiler-deploy/internal/status"
 )
 
 type Orchestrator struct {
-	statusMgr      *status.Manager
-	queue          *Queue
-	executor       *Executor
-	scriptExecutor *ScriptExecutor
-	environment    string
-	mu             sync.RWMutex
-	running        bool
-	stopChan       chan struct{}
-	progressCb     func(serverName, message string)
-	useScript      bool // Use deploy.sh script instead of ansible directly
+	statusMgr           *status.Manager
+	queue               *Queue
+	executor            *Executor
+	scriptExecutor      *ScriptExecutor
+	environment         string
+	mu                  sync.RWMutex
+	running             bool
+	stopChan            chan struct{}
+	progressCb          func(serverName, message string)
+	deploySuccessCb     func(serverName, serverIP string) // Callback when deployment succeeds
+	useScript           bool // Use deploy.sh script instead of ansible directly
+	healthCheckEnabled  bool // Enable/disable health checks
+	skipHealthCheck     bool // Skip health check for current deployment
 }
 
 func NewOrchestrator(environment string, statusMgr *status.Manager) (*Orchestrator, error) {
@@ -30,18 +34,32 @@ func NewOrchestrator(environment string, statusMgr *status.Manager) (*Orchestrat
 	}
 
 	return &Orchestrator{
-		statusMgr:      statusMgr,
-		queue:          queue,
-		executor:       NewExecutor(environment),
-		scriptExecutor: NewScriptExecutor(environment),
-		environment:    environment,
-		stopChan:       make(chan struct{}),
-		useScript:      false, // Use native Go ansible execution
+		statusMgr:          statusMgr,
+		queue:              queue,
+		executor:           NewExecutor(environment),
+		scriptExecutor:     NewScriptExecutor(environment),
+		environment:        environment,
+		stopChan:           make(chan struct{}),
+		useScript:          false, // Use native Go ansible execution
+		healthCheckEnabled: true,  // Enable by default
+		skipHealthCheck:    false,
 	}, nil
+}
+
+func (o *Orchestrator) SetHealthCheckEnabled(enabled bool) {
+	o.healthCheckEnabled = enabled
+}
+
+func (o *Orchestrator) SkipNextHealthCheck() {
+	o.skipHealthCheck = true
 }
 
 func (o *Orchestrator) SetProgressCallback(cb func(serverName, message string)) {
 	o.progressCb = cb
+}
+
+func (o *Orchestrator) SetDeploySuccessCallback(cb func(serverName, serverIP string)) {
+	o.deploySuccessCb = cb
 }
 
 func (o *Orchestrator) ValidateInventory(servers []*inventory.Server) {
@@ -218,13 +236,55 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 		if err != nil || !result.Success {
 			o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, result.ErrorMessage)
 		} else {
-			o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Checking...")
+			// Check if health check should be performed
+			performHealthCheck := o.healthCheckEnabled && !o.skipHealthCheck
+			o.skipHealthCheck = false // Reset for next deployment
 			
-			if err := o.executor.HealthCheck(server.IP, 80); err != nil {
-				o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, 
-					fmt.Sprintf("Health check failed: %v", err))
-			} else {
+			if !performHealthCheck {
+				log.Printf("[ORCHESTRATOR] Health check skipped (disabled or skip requested)")
 				o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
+				
+				// Trigger deploy success callback
+				if o.deploySuccessCb != nil {
+					o.deploySuccessCb(action.ServerName, server.IP)
+				}
+			} else {
+				o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Checking...")
+				
+				// Try health check on multiple ports: 80 (nginx), 443 (https), app port
+				ports := []int{80}
+				if server.AppPort > 0 && server.AppPort != 80 {
+					ports = append(ports, server.AppPort)
+				}
+				
+				var healthCheckErr error
+				healthCheckPassed := false
+				
+				for _, port := range ports {
+					log.Printf("[ORCHESTRATOR] Trying health check on %s:%d", server.IP, port)
+					if err := o.executor.HealthCheck(server.IP, port); err == nil {
+						log.Printf("[ORCHESTRATOR] Health check passed on port %d", port)
+						healthCheckPassed = true
+						break
+					} else {
+						healthCheckErr = err
+						log.Printf("[ORCHESTRATOR] Health check failed on port %d: %v", port, err)
+					}
+				}
+				
+				if !healthCheckPassed {
+					errMsg := fmt.Sprintf("Health check failed on all ports: %v", healthCheckErr)
+					log.Printf("[ORCHESTRATOR] %s", errMsg)
+					log.Printf("[ORCHESTRATOR] Tip: Check if application is running on server, nginx is configured, and ports are open")
+					o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, errMsg)
+				} else {
+					o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
+					
+					// Trigger deploy success callback
+					if o.deploySuccessCb != nil {
+						o.deploySuccessCb(action.ServerName, server.IP)
+					}
+				}
 			}
 		}
 
@@ -278,25 +338,40 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 		
 		log.Printf("[ORCHESTRATOR] SSH test passed for %s", action.ServerName)
 		
-		// Step 3: Check if deployed (try HTTP health check)
-		currentStatus := o.statusMgr.GetStatus(action.ServerName)
-		if currentStatus.State == status.StateDeployed {
-			o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Checking application...")
-			
-			checkPort := 80
-			log.Printf("[ORCHESTRATOR] Checking HTTP on %s:%d", server.IP, checkPort)
-			
-			if err := o.executor.HealthCheck(server.IP, checkPort); err != nil {
-				log.Printf("[ORCHESTRATOR] Application health check failed for %s: %v", action.ServerName, err)
-				o.statusMgr.UpdateStatus(action.ServerName, status.StateProvisioned, action.Action, "")
-			} else {
-				log.Printf("[ORCHESTRATOR] Application is responding for %s", action.ServerName)
-				o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
-			}
-		} else {
-			// Server is validated but not deployed yet
-			log.Printf("[ORCHESTRATOR] Validation passed for %s (not deployed yet)", action.ServerName)
-			o.statusMgr.UpdateStatus(action.ServerName, status.StateReady, action.Action, "")
+		// Step 3: Detect actual server state (provisioned/deployed)
+		o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Detecting server state...")
+		log.Printf("[ORCHESTRATOR] Detecting state for %s using State Detector", action.ServerName)
+		
+		detector := ssh.NewStateDetector()
+		stateResult := detector.DetectState(*server)
+		
+		log.Printf("[ORCHESTRATOR] State detected for %s: %s - %s", 
+			action.ServerName, stateResult.State, stateResult.Message)
+		
+		// Log detailed checks for debugging
+		if stateResult.ProvisioningChecks.AllProvisioned {
+			log.Printf("[ORCHESTRATOR] %s: Provisioning checks passed (Node: %v, Nginx: %v, NVM: %v, AppDir: %v)",
+				action.ServerName,
+				stateResult.ProvisioningChecks.NodeInstalled,
+				stateResult.ProvisioningChecks.NginxInstalled,
+				stateResult.ProvisioningChecks.NVMInstalled,
+				stateResult.ProvisioningChecks.AppDirExists)
+		}
+		
+		if stateResult.DeploymentChecks.AllDeployed {
+			log.Printf("[ORCHESTRATOR] %s: Deployment checks passed (PM2: %v, App: %v, Symlink: %v)",
+				action.ServerName,
+				stateResult.DeploymentChecks.PM2Running,
+				stateResult.DeploymentChecks.AppResponding,
+				stateResult.DeploymentChecks.CurrentSymlink)
+		}
+		
+		// Update status with detected state
+		o.statusMgr.UpdateStatus(action.ServerName, stateResult.State, action.Action, stateResult.Message)
+		
+		// Save status to file
+		if err := o.statusMgr.Save(); err != nil {
+			log.Printf("[ORCHESTRATOR] Warning: Could not save status for %s: %v", action.ServerName, err)
 		}
 		
 		close(progressChan)

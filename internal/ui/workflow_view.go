@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -17,36 +18,43 @@ import (
 )
 
 type WorkflowView struct {
-	environment     string
-	servers         []*inventory.Server
-	statuses        map[string]*status.ServerStatus
-	selectedServers map[string]bool
-	cursor          int
-	orchestrator    *ansible.Orchestrator
-	statusMgr       *status.Manager
-	logReader       *logging.Reader
-	showLogs        bool
-	currentLogFile  string
-	logLines        []string
-	progress        map[string]string
-	lastRefresh     time.Time
-	autoRefresh     bool
-	realtimeLogs    []string // Live streaming output from ansible
-	maxRealtimeLogs int
-	logsViewport    viewport.Model
-	logsReady       bool
-	tagSelector     *TagSelector
-	showTagSelector bool
-	pendingAction   string // "provision" or "deploy"
-	width           int
-	height          int
-	configMgr       *config.Manager
-	configOpts      *config.ConfigOptions
+	environment        string
+	servers            []*inventory.Server
+	statuses           map[string]*status.ServerStatus
+	selectedServers    map[string]bool
+	cursor             int
+	orchestrator       *ansible.Orchestrator
+	statusMgr          *status.Manager
+	logReader          *logging.Reader
+	showLogs           bool
+	currentLogFile     string
+	logLines           []string
+	progress           map[string]string
+	lastRefresh        time.Time
+	autoRefresh        bool
+	realtimeLogs       []string // Live streaming output from ansible
+	maxRealtimeLogs    int
+	logsViewport       viewport.Model
+	logsReady          bool
+	tagSelector        *TagSelector
+	showTagSelector    bool
+	pendingAction      string // "provision" or "deploy"
+	width              int
+	height             int
+	configMgr          *config.Manager
+	configOpts         *config.ConfigOptions
+	deployedServerIP   string // IP of last successfully deployed server
+	showBrowserPrompt  bool   // Show prompt to open browser
+	deploySuccessChan  chan deploySuccessMsg // Channel for deploy success events
 }
 
 type tickMsg time.Time
 type statusUpdateMsg struct{}
 type validationCompleteMsg struct{}
+type deploySuccessMsg struct {
+	serverName string
+	serverIP   string
+}
 
 func NewWorkflowView() (*WorkflowView, error) {
 	stor := storage.NewStorage(".")
@@ -67,16 +75,17 @@ func NewWorkflowViewWithEnv(envName string) (*WorkflowView, error) {
 	}
 	
 	wv := &WorkflowView{
-		environment:     envName,
-		selectedServers: make(map[string]bool),
-		progress:        make(map[string]string),
-		autoRefresh:     true,
-		realtimeLogs:    make([]string, 0),
-		maxRealtimeLogs: configOpts.LogRetention,
-		logsViewport:    viewport.New(120, 10), // Initial size, will be updated
-		logsReady:       true, // Set to true immediately
-		configMgr:       configMgr,
-		configOpts:      configOpts,
+		environment:       envName,
+		selectedServers:   make(map[string]bool),
+		progress:          make(map[string]string),
+		autoRefresh:       true,
+		realtimeLogs:      make([]string, 0),
+		maxRealtimeLogs:   configOpts.LogRetention,
+		logsViewport:      viewport.New(120, 10), // Initial size, will be updated
+		logsReady:         true, // Set to true immediately
+		configMgr:         configMgr,
+		configOpts:        configOpts,
+		deploySuccessChan: make(chan deploySuccessMsg, 10), // Buffered channel
 	}
 	
 	// Initialize viewport content immediately
@@ -113,6 +122,7 @@ func (wv *WorkflowView) loadEnvironment() error {
 	}
 	wv.orchestrator = orchestrator
 	wv.orchestrator.SetProgressCallback(wv.onProgress)
+	wv.orchestrator.SetDeploySuccessCallback(wv.onDeploySuccess)
 
 	wv.logReader = logging.NewReader(wv.environment)
 
@@ -145,6 +155,17 @@ func (wv *WorkflowView) onProgress(serverName, message string) {
 	
 	// Update viewport content
 	wv.updateLogsViewport()
+}
+
+func (wv *WorkflowView) onDeploySuccess(serverName, serverIP string) {
+	log.Printf("[WORKFLOW] onDeploySuccess callback called: serverName=%s, serverIP=%s", serverName, serverIP)
+	// Send to channel (non-blocking)
+	select {
+	case wv.deploySuccessChan <- deploySuccessMsg{serverName: serverName, serverIP: serverIP}:
+		log.Printf("[WORKFLOW] Deploy success message sent to channel")
+	default:
+		log.Printf("[WORKFLOW] Warning: deploy success channel full, message dropped")
+	}
 }
 
 func (wv *WorkflowView) updateLogsViewport() {
@@ -184,7 +205,18 @@ func (wv *WorkflowView) refreshStatuses() {
 
 func (wv *WorkflowView) Init() tea.Cmd {
 	wv.orchestrator.Start(wv.servers)
-	return wv.tickCmd()
+	return tea.Batch(
+		wv.tickCmd(),
+		wv.waitForDeploySuccess(),
+	)
+}
+
+func (wv *WorkflowView) waitForDeploySuccess() tea.Cmd {
+	return func() tea.Msg {
+		msg := <-wv.deploySuccessChan
+		log.Printf("[WORKFLOW] Received deploy success from channel: %s -> %s", msg.serverName, msg.serverIP)
+		return msg
+	}
 }
 
 func (wv *WorkflowView) tickCmd() tea.Cmd {
@@ -230,7 +262,6 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if selector.IsConfirmed() {
 				// Get selected tags and execute action
 				tags := selector.GetTagString()
-				fmt.Printf("[DEBUG] Tag selector confirmed. Tags: %s, Action: %s\n", tags, wv.pendingAction)
 				wv.showTagSelector = false
 				wv.tagSelector = nil
 				action := wv.pendingAction
@@ -240,7 +271,6 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				wv.refreshStatuses()
 				return wv, wv.tickCmd()
 			} else if selector.IsCancelled() {
-				fmt.Println("[DEBUG] Tag selector cancelled")
 				wv.showTagSelector = false
 				wv.tagSelector = nil
 				wv.pendingAction = ""
@@ -273,6 +303,29 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case validationCompleteMsg:
 		wv.refreshStatuses()
 		return wv, nil
+		
+	case deploySuccessMsg:
+		log.Printf("[WORKFLOW] Processing deploySuccessMsg: %s -> %s", msg.serverName, msg.serverIP)
+		
+		// Store the deployed server IP and show browser prompt
+		wv.deployedServerIP = msg.serverIP
+		wv.showBrowserPrompt = true
+		
+		log.Printf("[WORKFLOW] Browser prompt activated: deployedServerIP=%s, showBrowserPrompt=%v", 
+			wv.deployedServerIP, wv.showBrowserPrompt)
+		
+		logLine := fmt.Sprintf("[%s] ✓ Deployment successful! Site: http://%s", msg.serverName, msg.serverIP)
+		wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+		wv.realtimeLogs = append(wv.realtimeLogs, "Press 'o' to open in browser, or any key to continue")
+		
+		if len(wv.realtimeLogs) > wv.maxRealtimeLogs {
+			wv.realtimeLogs = wv.realtimeLogs[len(wv.realtimeLogs)-wv.maxRealtimeLogs:]
+		}
+		
+		wv.updateLogsViewport()
+		
+		// Re-subscribe to channel for next deploy success
+		return wv, wv.waitForDeploySuccess()
 	}
 
 	// Update viewport for scrolling
@@ -284,9 +337,39 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	
 	switch msg.String() {
+	case "o":
+		// Open browser if deployment succeeded
+		log.Printf("[WORKFLOW] 'o' key pressed. showBrowserPrompt=%v, deployedServerIP=%s", 
+			wv.showBrowserPrompt, wv.deployedServerIP)
+		
+		if wv.showBrowserPrompt && wv.deployedServerIP != "" {
+			url := fmt.Sprintf("http://%s", wv.deployedServerIP)
+			log.Printf("[WORKFLOW] Opening browser for URL: %s", url)
+			
+			if err := OpenBrowser(url); err != nil {
+				logLine := fmt.Sprintf("Failed to open browser: %v", err)
+				wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+				log.Printf("[WORKFLOW] Browser open failed: %v", err)
+			} else {
+				logLine := fmt.Sprintf("Opening %s in browser...", url)
+				wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+				log.Printf("[WORKFLOW] Browser opened successfully")
+			}
+			wv.showBrowserPrompt = false
+			wv.deployedServerIP = ""
+			wv.updateLogsViewport()
+		} else {
+			log.Printf("[WORKFLOW] Browser prompt not active or no IP set")
+		}
+	
 	case "q", "esc":
-		// Return to workflow selector
-		return NewWorkflowSelector(), nil
+		// Dismiss browser prompt if showing, otherwise return to workflow selector
+		if wv.showBrowserPrompt {
+			wv.showBrowserPrompt = false
+			wv.deployedServerIP = ""
+		} else {
+			return NewWorkflowSelector(), nil
+		}
 		
 	// Logs viewport scrolling
 	case "pgup":
@@ -354,9 +437,7 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "p":
 		// Open tag selector for provision
-		fmt.Println("[DEBUG] 'p' key pressed")
 		if len(wv.getSelectedServers()) > 0 {
-			fmt.Printf("[DEBUG] Opening tag selector (width=%d, height=%d)\n", wv.width, wv.height)
 			selector := NewTagSelectorWithDefaults("provision", wv.configOpts.ProvisioningTags)
 			// Initialize with current terminal dimensions
 			selector.width = wv.width
@@ -364,8 +445,6 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			wv.tagSelector = &selector
 			wv.showTagSelector = true
 			wv.pendingAction = "provision"
-		} else {
-			fmt.Println("[DEBUG] No servers selected")
 		}
 
 	case "d":
@@ -421,30 +500,24 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (wv *WorkflowView) executeActionWithTags(action, tags string) {
 	names := wv.getSelectedServerNames()
-	fmt.Printf("[DEBUG] executeActionWithTags called: action=%s, tags=%s, servers=%v\n", action, tags, names)
 	
 	if len(names) == 0 {
-		fmt.Println("[DEBUG] No servers selected, returning")
 		return
 	}
 	
 	// Ensure orchestrator is running
 	if !wv.orchestrator.IsRunning() {
-		fmt.Println("[DEBUG] Starting orchestrator")
 		wv.orchestrator.Start(wv.servers)
 	}
 	
 	switch action {
 	case "provision":
-		fmt.Printf("[DEBUG] Queueing provision with tags: %s\n", tags)
 		wv.orchestrator.QueueProvisionWithTags(names, 0, tags)
 	case "deploy":
-		fmt.Printf("[DEBUG] Queueing deploy with tags: %s\n", tags)
 		wv.orchestrator.QueueDeployWithTags(names, 0, tags)
 	}
 	
 	// Immediate refresh for instant feedback
-	fmt.Println("[DEBUG] Refreshing statuses and updating logs")
 	wv.refreshStatuses()
 	wv.updateLogsViewport()
 }
@@ -599,13 +672,20 @@ func (wv *WorkflowView) formatStatus(st *status.ServerStatus) (string, string) {
 	var icon string
 	var progressDetails string
 	
+	// Color styles
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00"))
+	blueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00BFFF"))
+	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD700"))
+	redStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF4444"))
+	grayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	
 	switch st.State {
 	case status.StateReady:
-		icon = "✓ Ready"
+		icon = yellowStyle.Render("✓ Ready")
 		// When validated successfully, show "All checks passed" in progress
 		progressDetails = "All checks passed"
 	case status.StateNotReady:
-		icon = "✗ Not Ready"
+		icon = redStyle.Render("✗ Not Ready")
 		// Show what's missing in progress column
 		details := []string{}
 		if !st.ReadyChecks.IPValid {
@@ -624,24 +704,24 @@ func (wv *WorkflowView) formatStatus(st *status.ServerStatus) (string, string) {
 			progressDetails = strings.Join(details, ", ")
 		}
 	case status.StateProvisioning:
-		icon = "⚡ Provisioning"
+		icon = yellowStyle.Render("⚡ Provisioning")
 	case status.StateProvisioned:
-		icon = "✓ Provisioned"
+		icon = blueStyle.Render("✓ Provisioned")
 	case status.StateDeploying:
-		icon = "⚡ Deploying"
+		icon = yellowStyle.Render("⚡ Deploying")
 	case status.StateDeployed:
-		icon = "✓ Deployed"
+		icon = greenStyle.Render("✓ Deployed")
 	case status.StateVerifying:
-		icon = "🔍 Verifying"
+		icon = blueStyle.Render("🔍 Verifying")
 	case status.StateFailed:
-		icon = "✗ Failed"
+		icon = redStyle.Render("✗ Failed")
 		if st.ErrorMessage != "" {
 			progressDetails = st.ErrorMessage
 		}
 	case "validating":
-		icon = "⏳ Validating"
+		icon = yellowStyle.Render("⏳ Validating")
 	default:
-		icon = "? Unknown"
+		icon = grayStyle.Render("? Unknown")
 	}
 
 	return icon, progressDetails

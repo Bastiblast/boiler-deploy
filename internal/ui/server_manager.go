@@ -2,12 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/bastiblast/boiler-deploy/internal/inventory"
 	"github.com/bastiblast/boiler-deploy/internal/ssh"
+	"github.com/bastiblast/boiler-deploy/internal/status"
 	"github.com/bastiblast/boiler-deploy/internal/storage"
 )
 
@@ -15,6 +17,7 @@ type ServerManager struct {
 	environment *inventory.Environment
 	cursor      int
 	storage     *storage.Storage
+	statusMgr   *status.Manager
 	message     string
 	messageType string // "success", "error", "info"
 	testing     bool   // Is SSH test in progress
@@ -23,8 +26,9 @@ type ServerManager struct {
 
 // SSH test result message
 type sshTestResultMsg struct {
-	index  int
-	result ssh.TestResult
+	index         int
+	result        ssh.TestResult
+	detectedState ssh.StateDetectionResult
 }
 
 // Batch SSH test results
@@ -33,10 +37,17 @@ type sshTestAllResultsMsg struct {
 }
 
 func NewServerManager(env *inventory.Environment) ServerManager {
+	// Initialize status manager
+	statusMgr, err := status.NewManager(env.Name)
+	if err != nil {
+		log.Printf("Warning: Could not initialize status manager: %v", err)
+	}
+
 	return ServerManager{
 		environment: env,
 		cursor:      0,
 		storage:     storage.NewStorage("."),
+		statusMgr:   statusMgr,
 	}
 }
 
@@ -83,14 +94,42 @@ func (m ServerManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.index >= 0 && msg.index < len(m.environment.Servers) {
 			m.environment.Servers[msg.index].SSHTested = true
 			if msg.result.Success {
-				m.environment.Servers[msg.index].SSHStatus = "✓ " + msg.result.Message
-				m.message = fmt.Sprintf("✓ SSH test passed for '%s'", m.environment.Servers[msg.index].Name)
+				// Update SSH status with detected state
+				stateDisplay := string(msg.detectedState.State)
+				m.environment.Servers[msg.index].SSHStatus = fmt.Sprintf("✓ %s - %s", stateDisplay, msg.detectedState.Message)
+				m.message = fmt.Sprintf("✓ SSH test passed for '%s' - State: %s", m.environment.Servers[msg.index].Name, stateDisplay)
 				m.messageType = "success"
+				
+				// Update Status Manager with detected state
+				if m.statusMgr != nil {
+					m.statusMgr.UpdateStatus(
+						m.environment.Servers[msg.index].Name,
+						msg.detectedState.State,
+						status.ActionCheck,
+						msg.detectedState.Message,
+					)
+					if err := m.statusMgr.Save(); err != nil {
+						log.Printf("Warning: Could not save status: %v", err)
+					}
+				}
 			} else {
 				m.environment.Servers[msg.index].SSHStatus = "✗ " + msg.result.Message
 				m.message = fmt.Sprintf("✗ SSH test failed for '%s': %s", 
 					m.environment.Servers[msg.index].Name, msg.result.Message)
 				m.messageType = "error"
+				
+				// Update Status Manager with not ready state
+				if m.statusMgr != nil {
+					m.statusMgr.UpdateStatus(
+						m.environment.Servers[msg.index].Name,
+						status.StateNotReady,
+						status.ActionCheck,
+						"SSH connection failed",
+					)
+					if err := m.statusMgr.Save(); err != nil {
+						log.Printf("Warning: Could not save status: %v", err)
+					}
+				}
 			}
 		}
 		return m, nil
@@ -164,19 +203,31 @@ func (m ServerManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messageType = "info"
 		
 		case "t":
-			// Test SSH connection for selected server
+			// Test SSH connection for selected server + detect state
 			if m.cursor < len(m.environment.Servers) && !m.testing {
 				m.testing = true
-				m.message = "Testing SSH connection..."
+				m.message = "Testing SSH connection and detecting state..."
 				m.messageType = "info"
 				
 				server := m.environment.Servers[m.cursor]
 				idx := m.cursor
 				
-				// Run SSH test asynchronously
+				// Run SSH test + state detection asynchronously
 				return m, func() tea.Msg {
 					result := ssh.TestConnection(server.IP, server.Port, server.SSHUser, server.SSHKeyPath)
-					return sshTestResultMsg{index: idx, result: result}
+					
+					var stateResult ssh.StateDetectionResult
+					if result.Success {
+						// If SSH works, detect the actual state
+						detector := ssh.NewStateDetector()
+						stateResult = detector.DetectState(server)
+					}
+					
+					return sshTestResultMsg{
+						index:         idx,
+						result:        result,
+						detectedState: stateResult,
+					}
 				}
 			}
 		

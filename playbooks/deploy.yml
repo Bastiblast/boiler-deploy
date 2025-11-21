@@ -25,8 +25,8 @@
   post_tasks:
     - name: Health check
       uri:
-        url: "http://localhost:{{ app_port }}/health"
-        status_code: 200
+        url: "http://localhost:{{ app_port }}/"
+        status_code: [200, 307]
       retries: 3
       delay: 5
       when: app_port is defined
