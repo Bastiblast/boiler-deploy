@@ -225,7 +225,6 @@ func (o *Orchestrator) processQueueParallel(servers []*inventory.Server, maxWork
 					workerID, action.Action, action.ServerName, currentActive, maxWorkers)
 				
 				o.executeAction(action, servers)
-				o.queue.Complete()
 				
 				o.workersMu.Lock()
 				o.activeWorkers--
@@ -255,6 +254,9 @@ func (o *Orchestrator) processQueueParallel(servers []*inventory.Server, maxWork
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
+		
+		// Remove from queue BEFORE sending to worker to prevent duplicate processing
+		o.queue.Complete()
 		
 		log.Printf("[ORCHESTRATOR] Queueing action for workers: %s for server %s", action.Action, action.ServerName)
 		actionChan <- action
