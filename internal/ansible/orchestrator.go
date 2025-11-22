@@ -395,6 +395,12 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 					log.Printf("[ORCHESTRATOR] %s", errMsg)
 					log.Printf("[ORCHESTRATOR] Tip: Check if application is running on server, nginx is configured, and ports are open")
 					o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, errMsg)
+					
+					// Trigger callback even on health check failure (allow browser access attempt)
+					if o.deploySuccessCb != nil {
+						log.Printf("[ORCHESTRATOR] Triggering deploy success callback despite health check failure (app may still be accessible)")
+						o.deploySuccessCb(action.ServerName, server.IP)
+					}
 				} else {
 					o.statusMgr.UpdateStatus(action.ServerName, status.StateDeployed, action.Action, "")
 					

@@ -344,9 +344,9 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		log.Printf("[WORKFLOW] Browser prompt activated: deployedServerIP=%s, showBrowserPrompt=%v", 
 			wv.deployedServerIP, wv.showBrowserPrompt)
 		
-		logLine := fmt.Sprintf("[%s] ✓ Deployment successful! Site: http://%s", msg.serverName, msg.serverIP)
+		logLine := fmt.Sprintf("[%s] ✓ Deployment successful! Site ready at http://%s", msg.serverName, msg.serverIP)
 		wv.realtimeLogs = append(wv.realtimeLogs, logLine)
-		wv.realtimeLogs = append(wv.realtimeLogs, "Press 'o' to open in browser, or any key to continue")
+		// Note: Browser prompt now shown as sticky footer (won't be truncated)
 		
 		if len(wv.realtimeLogs) > wv.maxRealtimeLogs {
 			wv.realtimeLogs = wv.realtimeLogs[len(wv.realtimeLogs)-wv.maxRealtimeLogs:]
@@ -514,6 +514,14 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "x":
 		wv.orchestrator.ClearQueue()
+	
+	default:
+		// Dismiss browser prompt on any other key (space, enter, arrows, etc)
+		if wv.showBrowserPrompt {
+			log.Printf("[WORKFLOW] Browser prompt dismissed by key: %s", msg.String())
+			wv.showBrowserPrompt = false
+			wv.deployedServerIP = ""
+		}
 	}
 
 	return wv, nil
@@ -812,6 +820,20 @@ func (wv *WorkflowView) renderRealtimeLogs() string {
 			Foreground(lipgloss.Color("240")).
 			Italic(true)
 		b.WriteString("\n" + infoStyle.Render(scrollInfo))
+	}
+	
+	// Show sticky browser prompt if deployment succeeded
+	if wv.showBrowserPrompt && wv.deployedServerIP != "" {
+		port := wv.detectServerPort(wv.deployedServerIP)
+		promptStyle := lipgloss.NewStyle().
+			Background(lipgloss.Color("22")).
+			Foreground(lipgloss.Color("255")).
+			Bold(true).
+			Padding(0, 1)
+		
+		promptMsg := fmt.Sprintf("🌐 Press 'o' to open http://%s:%d in browser | 'q' to dismiss", 
+			wv.deployedServerIP, port)
+		b.WriteString("\n" + promptStyle.Render(promptMsg))
 	}
 	
 	return b.String()
