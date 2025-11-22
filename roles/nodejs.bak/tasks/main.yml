@@ -1,0 +1,52 @@
+---
+- name: Install Node.js repository
+  shell: |
+    curl -fsSL https://deb.nodesource.com/setup_{{ nodejs_version }}.x | bash -
+  args:
+    creates: /etc/apt/sources.list.d/nodesource.list
+
+- name: Install Node.js
+  apt:
+    name:
+      - nodejs
+      - npm
+      - git
+      - build-essential
+    state: present
+    update_cache: yes
+
+- name: Install PM2 and pnpm globally
+  shell: /usr/bin/npm install -g {{ item }}
+  loop:
+    - pm2
+    - pnpm
+  ignore_errors: yes
+
+- name: Setup PM2 startup script
+  shell: pm2 startup systemd -u {{ deploy_user }} --hp /home/{{ deploy_user }}
+  args:
+    creates: /etc/systemd/system/pm2-{{ deploy_user }}.service
+  ignore_errors: yes
+
+- name: Create application directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: '0755'
+  loop:
+    - "{{ app_dir }}"
+    - "{{ app_releases_dir }}"
+    - "{{ app_shared_dir }}"
+    - "{{ app_shared_dir }}/logs"
+    - "{{ app_shared_dir }}/config"
+
+- name: Create .env template
+  template:
+    src: env.j2
+    dest: "{{ app_shared_dir }}/config/.env"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: '0600'
+  when: not ansible_check_mode

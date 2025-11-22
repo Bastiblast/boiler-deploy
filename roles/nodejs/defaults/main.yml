@@ -1,0 +1,3 @@
+---
+# Default values for nodejs role
+app_dir: "/var/www/app"

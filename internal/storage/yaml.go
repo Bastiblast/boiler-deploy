@@ -1,0 +1,153 @@
+package storage
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+	"github.com/bastiblast/boiler-deploy/internal/inventory"
+)
+
+type Storage struct {
+	basePath string
+}
+
+func NewStorage(basePath string) *Storage {
+	return &Storage{
+		basePath: basePath,
+	}
+}
+
+// SaveEnvironment saves an environment to disk
+func (s *Storage) SaveEnvironment(env inventory.Environment) error {
+	envPath := filepath.Join(s.basePath, "inventory", env.Name)
+	
+	// Create directory structure
+	if err := os.MkdirAll(envPath, 0755); err != nil {
+		return fmt.Errorf("failed to create environment directory: %v", err)
+	}
+	
+	// Create host_vars directory
+	hostVarsPath := filepath.Join(envPath, "host_vars")
+	if err := os.MkdirAll(hostVarsPath, 0755); err != nil {
+		return fmt.Errorf("failed to create host_vars directory: %v", err)
+	}
+	
+	// Save environment config to .env-config.yml (hidden from Ansible with leading dot)
+	// Ansible ignores files starting with '.'
+	configPath := filepath.Join(envPath, ".env-config.yml")
+	
+	// Save the full environment including mono_* fields for our app
+	configData, err := yaml.Marshal(env)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %v", err)
+	}
+	
+	if err := os.WriteFile(configPath, configData, 0644); err != nil {
+		return fmt.Errorf("failed to write config: %v", err)
+	}
+	
+	// Generate and save hosts.yml
+	generator := inventory.NewGenerator()
+	hostsData, err := generator.GenerateHostsYAML(env)
+	if err != nil {
+		return fmt.Errorf("failed to generate hosts.yml: %v", err)
+	}
+	
+	hostsPath := filepath.Join(envPath, "hosts.yml")
+	if err := os.WriteFile(hostsPath, hostsData, 0644); err != nil {
+		return fmt.Errorf("failed to write hosts.yml: %v", err)
+	}
+	
+	// Generate and save host_vars for web servers
+	for _, server := range env.Servers {
+		if server.Type == "web" {
+			hostVarsData, err := generator.GenerateHostVarsYAML(server)
+			if err != nil {
+				return fmt.Errorf("failed to generate host_vars for %s: %v", server.Name, err)
+			}
+			
+			if hostVarsData != nil {
+				hostVarsFile := filepath.Join(hostVarsPath, fmt.Sprintf("%s.yml", server.Name))
+				if err := os.WriteFile(hostVarsFile, hostVarsData, 0644); err != nil {
+					return fmt.Errorf("failed to write host_vars for %s: %v", server.Name, err)
+				}
+			}
+		}
+	}
+	
+	// Generate and save group_vars (common settings only)
+	groupVarsPath := filepath.Join(envPath, "group_vars")
+	if err := os.MkdirAll(groupVarsPath, 0755); err != nil {
+		return fmt.Errorf("failed to create group_vars directory: %v", err)
+	}
+	
+	groupVarsData, err := generator.GenerateGroupVarsYAML(env)
+	if err != nil {
+		return fmt.Errorf("failed to generate group_vars: %v", err)
+	}
+	
+	groupVarsFile := filepath.Join(groupVarsPath, "all.yml")
+	if err := os.WriteFile(groupVarsFile, groupVarsData, 0644); err != nil {
+		return fmt.Errorf("failed to write group_vars: %v", err)
+	}
+	
+	return nil
+}
+
+// LoadEnvironment loads an environment from disk
+func (s *Storage) LoadEnvironment(name string) (*inventory.Environment, error) {
+	configPath := filepath.Join(s.basePath, "inventory", name, ".env-config.yml")
+	
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %v", err)
+	}
+	
+	var env inventory.Environment
+	if err := yaml.Unmarshal(data, &env); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
+	}
+	
+	return &env, nil
+}
+
+// ListEnvironments lists all available environments
+func (s *Storage) ListEnvironments() ([]string, error) {
+	invPath := filepath.Join(s.basePath, "inventory")
+	
+	entries, err := os.ReadDir(invPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("failed to read inventory directory: %v", err)
+	}
+	
+	var envs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Check if .env-config.yml exists
+			configPath := filepath.Join(invPath, entry.Name(), ".env-config.yml")
+			if _, err := os.Stat(configPath); err == nil {
+				envs = append(envs, entry.Name())
+			}
+		}
+	}
+	
+	return envs, nil
+}
+
+// EnvironmentExists checks if an environment exists
+func (s *Storage) EnvironmentExists(name string) bool {
+	configPath := filepath.Join(s.basePath, "inventory", name, ".env-config.yml")
+	_, err := os.Stat(configPath)
+	return err == nil
+}
+
+// DeleteEnvironment deletes an environment
+func (s *Storage) DeleteEnvironment(name string) error {
+	envPath := filepath.Join(s.basePath, "inventory", name)
+	return os.RemoveAll(envPath)
+}

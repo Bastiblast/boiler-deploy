@@ -1,0 +1,51 @@
+{
+  "docker-web-01": {
+    "name": "docker-web-01",
+    "state": "failed",
+    "last_action": "deploy",
+    "last_update": "2025-11-21T21:45:16.643850574+01:00",
+    "error_message": "Health check failed on all ports: health check failed after 5 attempts: exit status 7",
+    "ready_checks": {
+      "ip_valid": true,
+      "ssh_key_exists": true,
+      "port_valid": true,
+      "all_fields_filled": true
+    }
+  },
+  "test-web-01": {
+    "name": "test-web-01",
+    "state": "ready",
+    "last_action": "check",
+    "last_update": "2025-11-21T23:06:46.218057149+01:00",
+    "ready_checks": {
+      "ip_valid": false,
+      "ssh_key_exists": false,
+      "port_valid": false,
+      "all_fields_filled": false
+    }
+  },
+  "test-web-02": {
+    "name": "test-web-02",
+    "state": "ready",
+    "last_action": "check",
+    "last_update": "2025-11-21T23:06:46.401786844+01:00",
+    "ready_checks": {
+      "ip_valid": false,
+      "ssh_key_exists": false,
+      "port_valid": false,
+      "all_fields_filled": false
+    }
+  },
+  "test-web-03": {
+    "name": "test-web-03",
+    "state": "ready",
+    "last_action": "check",
+    "last_update": "2025-11-21T23:06:46.601281018+01:00",
+    "ready_checks": {
+      "ip_valid": false,
+      "ssh_key_exists": false,
+      "port_valid": false,
+      "all_fields_filled": false
+    }
+  }
+}

@@ -1,0 +1,12 @@
+---
+- name: "{{ nvm_task_name | default('Execute command with NVM') }}"
+  shell: |
+    export NVM_DIR="/home/{{ deploy_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm use {{ required_node_version }}
+    {{ nvm_command }}
+  args:
+    chdir: "{{ nvm_chdir | default(omit) }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  register: nvm_exec_result
