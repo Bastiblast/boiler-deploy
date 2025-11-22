@@ -1,0 +1,14 @@
+---
+- name: Test Simple NVM Wrapper
+  hosts: test-web-01
+  gather_facts: no
+  vars:
+    deploy_user: root
+    required_node_version: "20"
+  
+  tasks:
+    - name: Test simple wrapper
+      include_tasks: ../roles/deploy-app/tasks/nvm-exec-simple.yml
+      vars:
+        nvm_task_name: "Test simple"
+        nvm_command: "node --version"

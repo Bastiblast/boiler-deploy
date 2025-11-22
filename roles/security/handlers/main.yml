@@ -1,10 +1,12 @@
 ---
 - name: restart fail2ban
-  systemd:
+  service:
     name: fail2ban
     state: restarted
+  when: enable_firewall | default(true)
 
 - name: restart sshd
-  systemd:
-    name: sshd
+  service:
+    name: ssh
     state: restarted
+  ignore_errors: yes  # Ignore errors for containerized environments without service management

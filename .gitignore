@@ -42,3 +42,8 @@ inventory/*/hosts.yml
 
 # Health check reports
 health_check_*.log
+
+# Runtime state files (DO NOT COMMIT)
+inventory/*/.status/
+inventory/*/.queue/
+debug.log

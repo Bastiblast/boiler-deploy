@@ -3,44 +3,58 @@
   hosts: all
   become: yes
   gather_facts: yes
+  tags: [always]
 
   pre_tasks:
     - name: Wait for system to become reachable
       wait_for_connection:
         timeout: 300
+      tags: [always]
 
     - name: Gather facts
       setup:
+      tags: [always]
 
   roles:
-    - common
-    - security
+    - role: common
+      tags: [common, base, system]
+    - role: security
+      tags: [security, firewall, ssh]
 
 - name: Setup database servers
   hosts: dbservers
   become: yes
+  tags: [database, db, postgresql]
 
   roles:
-    - postgresql
+    - role: postgresql
+      tags: [postgresql, db]
 
 - name: Setup web servers
   hosts: webservers
   become: yes
+  tags: [web, webserver]
 
   roles:
-    - nodejs
-    - nginx
+    - role: nodejs
+      tags: [nodejs, node, runtime]
+    - role: nginx
+      tags: [nginx, webserver, proxy]
 
 - name: Setup monitoring
   hosts: all
   become: yes
+  tags: [monitoring, observability]
 
   roles:
-    - monitoring
+    - role: monitoring
+      tags: [monitoring, metrics]
 
 - name: Display summary
-  hosts: localhost
+  hosts: all
   gather_facts: no
+  run_once: yes
+  tags: [always]
 
   tasks:
     - name: Show provisioning summary
@@ -49,20 +63,4 @@
           - "=========================================="
           - "Provisioning completed successfully!"
           - "=========================================="
-          - "Web Servers:"
-          - "{% for host in groups['webservers'] %}  - {{ host }}: {{ hostvars[host].ansible_host }}{% endfor %}"
-          - ""
-          - "Database Servers:"
-          - "{% for host in groups['dbservers'] %}  - {{ host }}: {{ hostvars[host].ansible_host }}{% endfor %}"
-          - ""
-          - "Monitoring:"
-          - "  - Prometheus: http://{{ hostvars[groups['monitoring'][0]].ansible_host }}:9090"
-          - "  - Grafana: http://{{ hostvars[groups['monitoring'][0]].ansible_host }}:3001"
-          - "    Default login: admin/admin"
-          - ""
-          - "Next steps:"
-          - "  1. Update inventory files with your actual Scaleway IPs"
-          - "  2. Update group_vars/all.yml with your app repository"
-          - "  3. Update group_vars/webservers.yml with your domain"
-          - "  4. Update group_vars/dbservers.yml with secure passwords"
-          - "  5. Run: ansible-playbook playbooks/deploy.yml -i inventory/dev"
+      tags: [always]

@@ -1,8 +1,18 @@
 ---
+- name: Wait for dpkg lock to be released
+  wait_for:
+    path: /var/lib/dpkg/lock-frontend
+    state: started
+    timeout: 300
+  changed_when: false
+  failed_when: false
+  tags: [packages, apt]
+
 - name: Install Nginx
   apt:
     name: nginx
     state: present
+  ignore_errors: yes
 
 - name: Remove default Nginx site
   file:
@@ -40,6 +50,7 @@
     name: nginx
     state: started
     enabled: yes
+  when: use_systemd | default(true)
 
 - name: Install Certbot for Let's Encrypt
   apt:

@@ -1,5 +1,9 @@
 # Ansible Deployment for Node.js Applications
 
+![Tests](https://github.com/bastiblast/boiler-deploy/workflows/Tests/badge.svg)
+![Go Version](https://img.shields.io/badge/Go-1.25-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 🚀 Universal deployment system for Node.js applications on any VPS provider with intelligent auto-detection, zero-downtime deployments, and built-in monitoring.
 
 ## ✨ Features
@@ -186,9 +190,11 @@ Security is enabled by default:
 - **fail2ban**: Automatic IP ban after failed login attempts
 - **SSH Hardening**: 
   - Key-only authentication
-  - Root login disabled
+  - Root login configurable (see [Security Guide](docs/SECURITY.md))
   - Deploy user with sudo access
 - **Automated Updates**: Security patches applied automatically
+
+⚠️ **Important:** Default configuration uses `root` user for simplicity. For production deployments, follow the [Security Best Practices](docs/SECURITY.md) to use a dedicated deploy user.
 
 ## 🛠️ Commands
 
