@@ -81,7 +81,7 @@ func NewWorkflowViewWithEnv(envName string) (*WorkflowView, error) {
 		autoRefresh:       true,
 		realtimeLogs:      make([]string, 0),
 		maxRealtimeLogs:   configOpts.LogRetention,
-		logsViewport:      viewport.New(120, 10), // Initial size, will be updated
+		logsViewport:      viewport.New(120, 20), // Initial size, will be updated dynamically
 		logsReady:         true, // Set to true immediately
 		configMgr:         configMgr,
 		configOpts:        configOpts,
@@ -211,13 +211,37 @@ func (wv *WorkflowView) updateLogsViewport() {
 	copy(logsCopy, wv.realtimeLogs)
 	wv.mu.Unlock()
 	
+	// Get current server name from cursor position
+	var currentServerName string
+	if wv.cursor >= 0 && wv.cursor < len(wv.servers) {
+		currentServerName = wv.servers[wv.cursor].Name
+	}
+	
 	var b strings.Builder
 	
 	if len(logsCopy) == 0 {
 		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 		b.WriteString(dimStyle.Render("Waiting for actions...") + "\n")
 	} else {
+		// Filter logs to show only current server's logs
+		filteredLogs := []string{}
 		for _, line := range logsCopy {
+			// Log format: [serverName] message
+			if currentServerName != "" && strings.HasPrefix(line, "["+currentServerName+"]") {
+				filteredLogs = append(filteredLogs, line)
+			}
+		}
+		
+		// If no logs for current server, show a message
+		if len(filteredLogs) == 0 {
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+			if currentServerName != "" {
+				b.WriteString(dimStyle.Render(fmt.Sprintf("No logs yet for %s...", currentServerName)) + "\n")
+			} else {
+				b.WriteString(dimStyle.Render("No server selected") + "\n")
+			}
+		} else {
+			for _, line := range filteredLogs {
 			// Truncate very long lines
 			displayLine := line
 			maxWidth := wv.logsViewport.Width - 4
@@ -225,9 +249,10 @@ func (wv *WorkflowView) updateLogsViewport() {
 				displayLine = displayLine[:maxWidth-3] + "..."
 			}
 			
-			// Apply different styles based on content
-			styledLine := wv.styleLogLine(displayLine)
-			b.WriteString(styledLine + "\n")
+				// Apply different styles based on content
+				styledLine := wv.styleLogLine(displayLine)
+				b.WriteString(styledLine + "\n")
+			}
 		}
 	}
 	
@@ -273,11 +298,22 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wv.height = wsMsg.Height
 		
 		// Update viewport size when terminal is resized
+		// Calculate available height: total height - header - table - controls - queue - margins
+		// Approximate: title(3) + table(servers*1 + 2) + controls(3) + queue(2) + margins(5) = ~15 + servers
+		logsHeight := wsMsg.Height - 18 - len(wv.servers)
+		if logsHeight < 5 {
+			logsHeight = 5 // Minimum height
+		}
+		if logsHeight > 30 {
+			logsHeight = 30 // Maximum height for readability
+		}
+		
 		if !wv.logsReady {
-			wv.logsViewport = viewport.New(wsMsg.Width, 10)
+			wv.logsViewport = viewport.New(wsMsg.Width, logsHeight)
 			wv.logsReady = true
 		} else {
 			wv.logsViewport.Width = wsMsg.Width
+			wv.logsViewport.Height = logsHeight
 		}
 		wv.updateLogsViewport()
 		
@@ -837,13 +873,23 @@ func (wv *WorkflowView) renderQueue() string {
 func (wv *WorkflowView) renderRealtimeLogs() string {
 	var b strings.Builder
 	
-	// Header
+	// Header with current server name
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("cyan")).
 		Padding(0, 1)
 	
-	b.WriteString(headerStyle.Render("📡 Live Output (PgUp/PgDown to scroll)") + "\n")
+	var serverName string
+	if wv.cursor >= 0 && wv.cursor < len(wv.servers) {
+		serverName = wv.servers[wv.cursor].Name
+	}
+	
+	headerText := "📡 Live Output (PgUp/PgDown to scroll)"
+	if serverName != "" {
+		headerText = fmt.Sprintf("📡 Live Output - %s (PgUp/PgDown to scroll)", serverName)
+	}
+	
+	b.WriteString(headerStyle.Render(headerText) + "\n")
 	b.WriteString(strings.Repeat("─", 120) + "\n")
 	
 	// Render viewport with scrollable logs
