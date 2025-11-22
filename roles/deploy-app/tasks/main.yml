@@ -32,18 +32,28 @@
   include_tasks: detect-app-type.yml
 
 # Install Node.js version required by the project
-- name: Check if required Node.js version is installed
+- name: Check if Node.js v{{ required_node_version }} is installed
   shell: |
     export NVM_DIR="/home/{{ deploy_user }}/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-    nvm ls {{ required_node_version }} | grep -q "{{ required_node_version }}"
+    nvm ls {{ required_node_version }} 2>/dev/null | grep -q "v{{ required_node_version }}"
   become: yes
   become_user: "{{ deploy_user }}"
   register: node_version_check
   ignore_errors: yes
   changed_when: false
+  failed_when: false
 
-- name: Install required Node.js version via NVM
+- name: Display Node.js installation status
+  debug:
+    msg: >-
+      {%- if node_version_check.rc == 0 -%}
+      ✓ Node.js v{{ required_node_version }} already installed
+      {%- else -%}
+      → Installing Node.js v{{ required_node_version }} via NVM (detected from package.json)
+      {%- endif -%}
+
+- name: Install Node.js v{{ required_node_version }} via NVM
   shell: |
     export NVM_DIR="/home/{{ deploy_user }}/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
