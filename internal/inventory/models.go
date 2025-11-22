@@ -42,6 +42,7 @@ type Server struct {
 	
 	// Application configuration (only for web servers)
 	AppPort       int    `yaml:"app_port,omitempty"`
+	HTTPPort      int    `yaml:"http_port,omitempty"` // External HTTP port (for browser access, Docker mapped port)
 	GitRepo       string `yaml:"git_repo,omitempty"`
 	GitBranch     string `yaml:"git_branch,omitempty"`
 	NodeVersion   string `yaml:"node_version,omitempty"`

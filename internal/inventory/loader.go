@@ -95,6 +95,9 @@ server.SSHUser = user
 if appPort, ok := hostMap["app_port"].(int); ok {
 server.AppPort = appPort
 }
+if httpPort, ok := hostMap["http_port"].(int); ok {
+server.HTTPPort = httpPort
+}
 if gitRepo, ok := hostMap["git_repo"].(string); ok {
 server.GitRepo = gitRepo
 }

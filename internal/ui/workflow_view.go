@@ -170,6 +170,34 @@ func (wv *WorkflowView) onDeploySuccess(serverName, serverIP string) {
 	}
 }
 
+// detectServerPort finds the correct HTTP port for a server
+// Priority: http_port (external/browser) → app_port (internal) → 80 (default)
+func (wv *WorkflowView) detectServerPort(serverIP string) int {
+	// Find server by IP in loaded inventory
+	for _, server := range wv.servers {
+		if server.IP == serverIP {
+			// Priority 1: http_port (for Docker port mapping or custom external port)
+			if server.HTTPPort > 0 {
+				log.Printf("[WORKFLOW] Using http_port=%d for server %s (browser/external access)", server.HTTPPort, server.Name)
+				return server.HTTPPort
+			}
+			
+			// Priority 2: app_port (direct app access, for non-proxied setups)
+			if server.AppPort > 0 {
+				log.Printf("[WORKFLOW] Using app_port=%d for server %s (no http_port configured)", server.AppPort, server.Name)
+				return server.AppPort
+			}
+			
+			log.Printf("[WORKFLOW] Server %s has no http_port or app_port configured", server.Name)
+			break
+		}
+	}
+	
+	// Default: Port 80 (nginx/standard HTTP)
+	log.Printf("[WORKFLOW] Using default port 80 for IP %s", serverIP)
+	return 80
+}
+
 func (wv *WorkflowView) updateLogsViewport() {
 	if !wv.logsReady {
 		return
@@ -345,8 +373,10 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			wv.showBrowserPrompt, wv.deployedServerIP)
 		
 		if wv.showBrowserPrompt && wv.deployedServerIP != "" {
-			url := fmt.Sprintf("http://%s", wv.deployedServerIP)
-			log.Printf("[WORKFLOW] Opening browser for URL: %s", url)
+			// Detect correct port from server configuration
+			port := wv.detectServerPort(wv.deployedServerIP)
+			url := fmt.Sprintf("http://%s:%d", wv.deployedServerIP, port)
+			log.Printf("[WORKFLOW] Opening browser for URL: %s (detected port: %d)", url, port)
 			
 			if err := OpenBrowser(url); err != nil {
 				logLine := fmt.Sprintf("Failed to open browser: %v", err)
