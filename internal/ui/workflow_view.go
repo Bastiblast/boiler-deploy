@@ -445,8 +445,9 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "v":
-		selected := wv.getSelectedServers()
-		names := wv.getSelectedServerNames()
+		// Use checked servers, or server at cursor if none checked
+		selected := wv.getServersForAction()
+		names := wv.getServerNamesForAction()
 		if len(selected) == 0 {
 			return wv, nil
 		}
