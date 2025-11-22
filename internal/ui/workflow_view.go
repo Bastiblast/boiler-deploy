@@ -123,6 +123,8 @@ func (wv *WorkflowView) loadEnvironment() error {
 	wv.orchestrator = orchestrator
 	wv.orchestrator.SetProgressCallback(wv.onProgress)
 	wv.orchestrator.SetDeploySuccessCallback(wv.onDeploySuccess)
+	wv.orchestrator.SetHealthCheckEnabled(wv.configOpts.HealthCheckEnabled)
+	wv.orchestrator.SetMaxWorkers(wv.configOpts.MaxParallelWorkers)
 
 	wv.logReader = logging.NewReader(wv.environment)
 

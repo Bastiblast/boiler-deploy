@@ -12,6 +12,9 @@ type ConfigOptions struct {
 	DeploymentStrategy   string        `yaml:"deployment_strategy"`   // "rolling", "all_at_once", "blue_green"
 	DeploymentTags       []string      `yaml:"deployment_tags"`
 	
+	// Parallel execution options
+	MaxParallelWorkers   int           `yaml:"max_parallel_workers"`  // Number of parallel workers (0=sequential)
+	
 	// Health check options
 	HealthCheckEnabled   bool          `yaml:"health_check_enabled"`
 	HealthCheckTimeout   time.Duration `yaml:"health_check_timeout"`
@@ -33,6 +36,7 @@ func DefaultConfig() *ConfigOptions {
 		ProvisioningStrategy: "sequential",
 		DeploymentStrategy:   "rolling",
 		DeploymentTags:       []string{"all"},
+		MaxParallelWorkers:   0,  // Sequential by default (0 or 3-5 for parallel)
 		HealthCheckEnabled:   true,
 		HealthCheckTimeout:   30 * time.Second,
 		HealthCheckRetries:   3,

@@ -128,6 +128,31 @@ func (q *Queue) Next() *status.QueuedAction {
 	return action
 }
 
+func (q *Queue) NextBatch(count int) []*status.QueuedAction {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if len(q.actions) == 0 {
+		return nil
+	}
+
+	batchSize := count
+	if batchSize > len(q.actions) {
+		batchSize = len(q.actions)
+	}
+
+	batch := make([]*status.QueuedAction, batchSize)
+	now := time.Now()
+	
+	for i := 0; i < batchSize; i++ {
+		q.actions[i].StartedAt = &now
+		batch[i] = q.actions[i]
+	}
+	
+	log.Printf("[QUEUE] Next batch: %d actions", batchSize)
+	return batch
+}
+
 func (q *Queue) Complete() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -140,6 +165,23 @@ func (q *Queue) Complete() {
 	q.current = nil
 	q.save()
 	log.Printf("[QUEUE] Action completed, queue size now: %d", len(q.actions))
+}
+
+func (q *Queue) CompleteByID(id string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	for i, action := range q.actions {
+		if action.ID == id {
+			log.Printf("[QUEUE] Completing action by ID: %s for server %s", action.Action, action.ServerName)
+			q.actions = append(q.actions[:i], q.actions[i+1:]...)
+			q.save()
+			log.Printf("[QUEUE] Action completed, queue size now: %d", len(q.actions))
+			return
+		}
+	}
+	
+	log.Printf("[QUEUE] Warning: action ID %s not found for completion", id)
 }
 
 func (q *Queue) Stop() {

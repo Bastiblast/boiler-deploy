@@ -28,6 +28,9 @@ type Orchestrator struct {
 	useScript           bool // Use deploy.sh script instead of ansible directly
 	healthCheckEnabled  bool // Enable/disable health checks
 	skipHealthCheck     bool // Skip health check for current deployment
+	maxWorkers          int  // Number of parallel workers (0 = sequential)
+	activeWorkers       int  // Current number of active workers
+	workersMu           sync.Mutex // Mutex for activeWorkers counter
 }
 
 func NewOrchestrator(environment string, statusMgr *status.Manager) (*Orchestrator, error) {
@@ -46,11 +49,23 @@ func NewOrchestrator(environment string, statusMgr *status.Manager) (*Orchestrat
 		useScript:          false, // Use native Go ansible execution
 		healthCheckEnabled: true,  // Enable by default
 		skipHealthCheck:    false,
+		maxWorkers:         0,     // Sequential by default
+		activeWorkers:      0,
 	}, nil
 }
 
 func (o *Orchestrator) SetHealthCheckEnabled(enabled bool) {
 	o.healthCheckEnabled = enabled
+}
+
+func (o *Orchestrator) SetMaxWorkers(workers int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if workers < 0 {
+		workers = 0
+	}
+	o.maxWorkers = workers
+	log.Printf("[ORCHESTRATOR] Max workers set to %d (0=sequential, >0=parallel)", workers)
 }
 
 func (o *Orchestrator) SkipNextHealthCheck() {
@@ -151,14 +166,29 @@ func (o *Orchestrator) Stop() {
 func (o *Orchestrator) processQueue(servers []*inventory.Server) {
 	log.Println("[ORCHESTRATOR] processQueue started")
 	
+	// Check if parallel or sequential mode
+	o.mu.RLock()
+	workers := o.maxWorkers
+	o.mu.RUnlock()
+	
+	if workers <= 0 {
+		// Sequential mode (original behavior)
+		log.Println("[ORCHESTRATOR] Running in SEQUENTIAL mode")
+		o.processQueueSequential(servers)
+	} else {
+		// Parallel mode with worker pool
+		log.Printf("[ORCHESTRATOR] Running in PARALLEL mode with %d workers", workers)
+		o.processQueueParallel(servers, workers)
+	}
+}
+
+func (o *Orchestrator) processQueueSequential(servers []*inventory.Server) {
 	for {
-		// Check for stop signal (non-blocking)
 		select {
 		case <-o.stopChan:
-			log.Println("[ORCHESTRATOR] processQueue received stop signal")
+			log.Println("[ORCHESTRATOR] processQueueSequential received stop signal")
 			return
 		default:
-			// Continue processing
 		}
 		
 		action := o.queue.Next()
@@ -171,6 +201,63 @@ func (o *Orchestrator) processQueue(servers []*inventory.Server) {
 		o.executeAction(action, servers)
 		o.queue.Complete()
 		log.Printf("[ORCHESTRATOR] Completed action: %s for server %s", action.Action, action.ServerName)
+	}
+}
+
+func (o *Orchestrator) processQueueParallel(servers []*inventory.Server, maxWorkers int) {
+	var wg sync.WaitGroup
+	actionChan := make(chan *status.QueuedAction, maxWorkers)
+	
+	// Start worker pool
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			log.Printf("[ORCHESTRATOR] Worker %d started", workerID)
+			
+			for action := range actionChan {
+				o.workersMu.Lock()
+				o.activeWorkers++
+				currentActive := o.activeWorkers
+				o.workersMu.Unlock()
+				
+				log.Printf("[ORCHESTRATOR] Worker %d processing: %s for server %s (active: %d/%d)", 
+					workerID, action.Action, action.ServerName, currentActive, maxWorkers)
+				
+				o.executeAction(action, servers)
+				o.queue.Complete()
+				
+				o.workersMu.Lock()
+				o.activeWorkers--
+				o.workersMu.Unlock()
+				
+				log.Printf("[ORCHESTRATOR] Worker %d completed: %s for server %s", 
+					workerID, action.Action, action.ServerName)
+			}
+			
+			log.Printf("[ORCHESTRATOR] Worker %d stopped", workerID)
+		}(i)
+	}
+	
+	// Feed actions to workers
+	for {
+		select {
+		case <-o.stopChan:
+			log.Println("[ORCHESTRATOR] processQueueParallel received stop signal")
+			close(actionChan)
+			wg.Wait()
+			return
+		default:
+		}
+		
+		action := o.queue.Next()
+		if action == nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		
+		log.Printf("[ORCHESTRATOR] Queueing action for workers: %s for server %s", action.Action, action.ServerName)
+		actionChan <- action
 	}
 }
 
