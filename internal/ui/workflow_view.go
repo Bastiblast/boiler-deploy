@@ -180,25 +180,23 @@ func (wv *WorkflowView) detectServerPort(serverIP string) int {
 	// Find server by IP in loaded inventory
 	for _, server := range wv.servers {
 		if server.IP == serverIP {
-			// Priority 1: http_port (for Docker port mapping or custom external port)
+			// Priority 1: http_port (external port for browser access)
+			// Used for: Docker containers (8080/8081/8082), custom nginx ports
 			if server.HTTPPort > 0 {
-				log.Printf("[WORKFLOW] Using http_port=%d for server %s (browser/external access)", server.HTTPPort, server.Name)
+				log.Printf("[WORKFLOW] Using http_port=%d for server %s (external/browser access)", server.HTTPPort, server.Name)
 				return server.HTTPPort
 			}
 			
-			// Priority 2: app_port (direct app access, for non-proxied setups)
-			if server.AppPort > 0 {
-				log.Printf("[WORKFLOW] Using app_port=%d for server %s (no http_port configured)", server.AppPort, server.Name)
-				return server.AppPort
-			}
-			
-			log.Printf("[WORKFLOW] Server %s has no http_port or app_port configured", server.Name)
-			break
+			// Priority 2: Default port 80
+			// Used for: Classic servers with nginx on standard HTTP port
+			// Note: app_port (3000) is internal only, never used for browser
+			log.Printf("[WORKFLOW] Using default port 80 for server %s (standard nginx)", server.Name)
+			return 80
 		}
 	}
 	
-	// Default: Port 80 (nginx/standard HTTP)
-	log.Printf("[WORKFLOW] Using default port 80 for IP %s", serverIP)
+	// Fallback: Port 80 (if server not found in inventory)
+	log.Printf("[WORKFLOW] Server with IP %s not found in inventory, using default port 80", serverIP)
 	return 80
 }
 
