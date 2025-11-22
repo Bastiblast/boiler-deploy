@@ -121,3 +121,90 @@ func TestConnection(host string, port int, user string, keyPath string) TestResu
 		Latency: latency,
 	}
 }
+
+// CommandResult represents the result of an SSH command execution
+type CommandResult struct {
+	Success bool
+	Output  string
+	Message string
+}
+
+// ExecuteCommand executes a command on a remote server via SSH
+func ExecuteCommand(host string, port int, user string, keyPath string, command string) CommandResult {
+	// Expand home directory if needed
+	if len(keyPath) > 0 && keyPath[0] == '~' {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return CommandResult{
+				Success: false,
+				Message: fmt.Sprintf("Cannot expand home directory: %v", err),
+			}
+		}
+		keyPath = home + keyPath[1:]
+	}
+
+	// Read private key
+	key, err := os.ReadFile(keyPath)
+	if err != nil {
+		return CommandResult{
+			Success: false,
+			Message: fmt.Sprintf("Cannot read SSH key: %v", err),
+		}
+	}
+
+	// Parse private key
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return CommandResult{
+			Success: false,
+			Message: fmt.Sprintf("Cannot parse SSH key: %v", err),
+		}
+	}
+
+	// Configure SSH client
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	// Connect to server
+	address := fmt.Sprintf("%s:%d", host, port)
+	client, err := ssh.Dial("tcp", address, config)
+	if err != nil {
+		return CommandResult{
+			Success: false,
+			Message: fmt.Sprintf("SSH connection failed: %v", err),
+		}
+	}
+	defer client.Close()
+
+	// Create session
+	session, err := client.NewSession()
+	if err != nil {
+		return CommandResult{
+			Success: false,
+			Message: fmt.Sprintf("Session creation failed: %v", err),
+		}
+	}
+	defer session.Close()
+
+	// Execute command
+	output, err := session.CombinedOutput(command)
+	if err != nil {
+		return CommandResult{
+			Success: false,
+			Output:  string(output),
+			Message: fmt.Sprintf("Command failed: %v", err),
+		}
+	}
+
+	return CommandResult{
+		Success: true,
+		Output:  string(output),
+		Message: "Command executed successfully",
+	}
+}

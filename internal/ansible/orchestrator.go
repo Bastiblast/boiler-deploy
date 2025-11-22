@@ -342,29 +342,56 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 			} else {
 				o.statusMgr.UpdateStatus(action.ServerName, status.StateVerifying, action.Action, "Checking...")
 				
-				// Try health check on multiple ports: 80 (nginx), 443 (https), app port
-				ports := []int{80}
-				if server.AppPort > 0 && server.AppPort != 80 {
-					ports = append(ports, server.AppPort)
-				}
+				// Determine if we need remote health check (SSH-based)
+				// Use remote check if:
+				// - Server IP is 127.0.0.1 (localhost/Docker container)
+				// - Server has SSH credentials configured
+				useRemoteCheck := server.IP == "127.0.0.1" && server.Port > 0 && server.SSHKeyPath != ""
 				
 				var healthCheckErr error
 				healthCheckPassed := false
 				
-				for _, port := range ports {
-					log.Printf("[ORCHESTRATOR] Trying health check on %s:%d", server.IP, port)
-					if err := o.executor.HealthCheck(server.IP, port); err == nil {
-						log.Printf("[ORCHESTRATOR] Health check passed on port %d", port)
-						healthCheckPassed = true
-						break
+				if useRemoteCheck {
+					// Remote health check via SSH (for Docker containers or localhost servers)
+					log.Printf("[ORCHESTRATOR] Using remote health check via SSH for %s (port %d)", action.ServerName, server.AppPort)
+					
+					if server.AppPort > 0 {
+						if err := o.executor.HealthCheckRemote(server.IP, server.Port, server.SSHUser, server.SSHKeyPath, server.AppPort); err == nil {
+							log.Printf("[ORCHESTRATOR] Remote health check passed on port %d", server.AppPort)
+							healthCheckPassed = true
+						} else {
+							healthCheckErr = err
+							log.Printf("[ORCHESTRATOR] Remote health check failed: %v", err)
+						}
 					} else {
-						healthCheckErr = err
-						log.Printf("[ORCHESTRATOR] Health check failed on port %d: %v", port, err)
+						healthCheckErr = fmt.Errorf("app_port not configured for server")
+						log.Printf("[ORCHESTRATOR] Cannot perform health check: %v", healthCheckErr)
+					}
+				} else {
+					// Standard health check (direct HTTP from orchestrator to server IP)
+					log.Printf("[ORCHESTRATOR] Using direct health check for %s:%d", server.IP, server.AppPort)
+					
+					// Try health check on multiple ports: 80 (nginx), 443 (https), app port
+					ports := []int{80}
+					if server.AppPort > 0 && server.AppPort != 80 {
+						ports = append(ports, server.AppPort)
+					}
+					
+					for _, port := range ports {
+						log.Printf("[ORCHESTRATOR] Trying health check on %s:%d", server.IP, port)
+						if err := o.executor.HealthCheck(server.IP, port); err == nil {
+							log.Printf("[ORCHESTRATOR] Health check passed on port %d", port)
+							healthCheckPassed = true
+							break
+						} else {
+							healthCheckErr = err
+							log.Printf("[ORCHESTRATOR] Health check failed on port %d: %v", port, err)
+						}
 					}
 				}
 				
 				if !healthCheckPassed {
-					errMsg := fmt.Sprintf("Health check failed on all ports: %v", healthCheckErr)
+					errMsg := fmt.Sprintf("Health check failed: %v", healthCheckErr)
 					log.Printf("[ORCHESTRATOR] %s", errMsg)
 					log.Printf("[ORCHESTRATOR] Tip: Check if application is running on server, nginx is configured, and ports are open")
 					o.statusMgr.UpdateStatus(action.ServerName, status.StateFailed, action.Action, errMsg)

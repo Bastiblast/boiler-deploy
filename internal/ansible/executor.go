@@ -368,6 +368,8 @@ func (e *Executor) DeployCheck(serverName string, tags string, progressChan chan
 }
 
 func (e *Executor) HealthCheck(ip string, port int) error {
+	// For local development (127.0.0.1), use direct HTTP check
+	// For remote servers, this will still work if ports are properly forwarded
 	url := fmt.Sprintf("http://%s:%d/", ip, port)
 	log.Printf("[EXECUTOR] Health check starting for: %s", url)
 	
@@ -414,6 +416,36 @@ func (e *Executor) HealthCheck(ip string, port int) error {
 	
 	log.Printf("[EXECUTOR] ✗ Health check failed after %d attempts", maxRetries)
 	return fmt.Errorf("health check failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+// HealthCheckRemote performs health check via SSH on the remote server
+// This is needed when the app listens only on localhost inside the server
+func (e *Executor) HealthCheckRemote(sshHost string, sshPort int, sshUser string, sshKeyPath string, appPort int) error {
+	log.Printf("[EXECUTOR] Remote health check via SSH to %s:%d checking localhost:%d", sshHost, sshPort, appPort)
+	
+	maxRetries := 5
+	retryDelays := []time.Duration{2 * time.Second, 3 * time.Second, 5 * time.Second, 8 * time.Second, 10 * time.Second}
+	
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			log.Printf("[EXECUTOR] Remote health check retry %d/%d after %v delay", i+1, maxRetries, retryDelays[i-1])
+			time.Sleep(retryDelays[i-1])
+		}
+		
+		// Try curl on remote server (check localhost from inside)
+		cmd := fmt.Sprintf("curl -sf -m 5 http://localhost:%d/ > /dev/null 2>&1 && echo 'OK' || echo 'FAIL'", appPort)
+		result := ssh.ExecuteCommand(sshHost, sshPort, sshUser, sshKeyPath, cmd)
+		
+		if result.Success && strings.TrimSpace(result.Output) == "OK" {
+			log.Printf("[EXECUTOR] ✓ Remote health check successful on attempt %d", i+1)
+			return nil
+		}
+		
+		log.Printf("[EXECUTOR] Remote health check attempt %d/%d failed: %s", i+1, maxRetries, result.Message)
+	}
+	
+	log.Printf("[EXECUTOR] ✗ Remote health check failed after %d attempts", maxRetries)
+	return fmt.Errorf("remote health check failed after %d attempts", maxRetries)
 }
 
 // healthCheckCurl uses curl command (traditional method)
