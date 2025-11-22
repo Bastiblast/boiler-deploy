@@ -277,6 +277,57 @@ EOF
     
     log_success "Inventory generated: ${hosts_file}"
     
+    # Generate .env-config.yml (source of truth for TUI)
+    local config_file="${inventory_dir}/.env-config.yml"
+    log_info "Generating .env-config.yml for TUI..."
+    
+    cat > "${config_file}" << 'EOF'
+name: docker
+services:
+  web: true
+  database: false
+  monitoring: false
+config:
+  app_name: ""
+  app_repo: ""
+  app_branch: ""
+  nodejs_version: ""
+  app_port: ""
+  deploy_user: root
+  timezone: ""
+servers:
+EOF
+    
+    for i in 1 2 3; do
+        local container_name="${CONTAINER_PREFIX}-0${i}"
+        local ssh_port=$((BASE_SSH_PORT + i - 1))
+        local http_port=$((BASE_HTTP_PORT + i - 1))
+        local app_port=$((BASE_APP_PORT + i - 1))
+        
+        cat >> "${config_file}" << EOF
+  - name: ${container_name}
+    ip: 127.0.0.1
+    port: ${ssh_port}
+    ssh_user: root
+    ssh_key_path: ${SSH_PRIVATE_KEY}
+    type: web
+    ansible_become: true
+    app_port: ${app_port}
+    http_port: ${http_port}
+    git_repo: https://github.com/Bastiblast/portefolio
+    git_branch: main
+    node_version: "20"
+EOF
+    done
+    
+    cat >> "${config_file}" << EOF
+mono_server: false
+mono_ip: 127.0.0.1
+mono_ssh_key: true
+EOF
+    
+    log_success ".env-config.yml generated: ${config_file}"
+    
     # Display inventory for verification
     separator
     log_info "Generated Inventory:"
