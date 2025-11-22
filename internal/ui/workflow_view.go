@@ -38,6 +38,7 @@ type WorkflowView struct {
 	maxRealtimeLogs    int
 	logsViewport       viewport.Model
 	logsReady          bool
+	userScrolling      bool // Track if user is manually scrolling logs
 	tagSelector        *TagSelector
 	showTagSelector    bool
 	pendingAction      string // "provision" or "deploy"
@@ -257,8 +258,10 @@ func (wv *WorkflowView) updateLogsViewport() {
 	}
 	
 	wv.logsViewport.SetContent(b.String())
-	// Auto-scroll to bottom on new content
-	wv.logsViewport.GotoBottom()
+	// Auto-scroll to bottom only if user is not manually scrolling
+	if !wv.userScrolling {
+		wv.logsViewport.GotoBottom()
+	}
 }
 
 func (wv *WorkflowView) refreshStatuses() {
@@ -448,11 +451,17 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		
 	// Logs viewport scrolling
 	case "pgup":
+		wv.userScrolling = true // User is manually scrolling
 		wv.logsViewport, cmd = wv.logsViewport.Update(msg)
 		return wv, cmd
 		
 	case "pgdown":
+		wv.userScrolling = true // User is manually scrolling
 		wv.logsViewport, cmd = wv.logsViewport.Update(msg)
+		// If user scrolled to bottom, re-enable auto-scroll
+		if wv.logsViewport.AtBottom() {
+			wv.userScrolling = false
+		}
 		return wv, cmd
 
 	case "up", "k":
