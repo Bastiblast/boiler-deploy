@@ -1,4 +1,8 @@
+# ⚠️ SECURITY: For testing only - DO NOT use in production
+# See docs/SECURITY.md for secure configuration
 allow_root_login: true
+deploy_user: root
+
 app_branch: main
 app_current_dir: '{{ app_dir }}/current'
 app_dir: /var/www/docker
@@ -10,7 +14,6 @@ app_repo: https://github.com/Bastiblast/portefolio
 app_shared_dir: '{{ app_dir }}/shared'
 backup_dir: /var/backups
 backup_retention_days: 7
-deploy_user: root
 deploy_user_groups:
     - sudo
     - www-data

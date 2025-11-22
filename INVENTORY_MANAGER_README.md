@@ -62,6 +62,9 @@ Server Management:
 [T]             - Test all SSH connections
 [s]             - Save environment
 [g]             - Generate YAML preview
+
+Post-Deployment:
+[o]             - Open deployed site in browser (after successful deployment)
 ```
 
 ### Create an Environment
@@ -98,6 +101,35 @@ The SSH test will:
 - `✗ Connection timeout` - Server is unreachable or firewall blocking
 - `✗ Cannot read SSH key` - SSH key file not found or invalid path
 - `✗ Connection failed` - Authentication or other SSH errors
+
+### Deployment Workflow
+
+After deploying your application:
+
+1. **Monitor Progress** - Watch real-time deployment logs in the TUI
+2. **Health Check** - The system automatically verifies your application is responding:
+   - Tries port 80 (Nginx) first
+   - Falls back to application port (e.g., 3000) if configured
+   - Retries up to 5 times with exponential backoff
+   - Detailed diagnostics in logs if failures occur
+3. **Automatic Success Notification** - When deployment completes successfully, you'll see:
+   ```
+   [server-name] ✓ Deployment successful! Site: http://YOUR_SERVER_IP
+   Press 'o' to open in browser, or any key to continue
+   ```
+4. **Quick Browser Access** - Press `o` to automatically open the deployed site in your default browser
+5. **Cross-Platform Support** - Works on Linux (xdg-open, gnome-open, WSL), macOS (open), and Windows (rundll32)
+
+The browser feature will:
+- ✅ Detect your operating system automatically
+- ✅ Use the appropriate command to open your default browser
+- ✅ Navigate directly to your deployed application
+- ✅ Display helpful error messages if the browser cannot be opened
+
+**Troubleshooting Health Check:**
+- If health check fails, see [HEALTH_CHECK_GUIDE.md](HEALTH_CHECK_GUIDE.md)
+- Common issues: Nginx not started, firewall blocking, app not running
+- Check logs: `tail -f debug.log | grep HEALTH`
 
 ### Generated Files
 

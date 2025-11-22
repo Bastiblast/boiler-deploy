@@ -263,6 +263,24 @@ run_status() {
     }
 }
 
+open_browser() {
+    local url="$1"
+    
+    # Detect OS and open browser
+    if command -v xdg-open > /dev/null; then
+        xdg-open "$url" > /dev/null 2>&1 &
+    elif command -v gnome-open > /dev/null; then
+        gnome-open "$url" > /dev/null 2>&1 &
+    elif command -v open > /dev/null; then
+        open "$url" > /dev/null 2>&1 &
+    elif command -v wslview > /dev/null; then
+        wslview "$url" > /dev/null 2>&1 &
+    else
+        return 1
+    fi
+    return 0
+}
+
 show_success() {
     local action="$1"
     
@@ -276,9 +294,25 @@ show_success() {
     local server_ip=$(grep "ansible_host:" "inventory/$ENVIRONMENT/hosts.yml" | head -1 | awk '{print $2}')
     
     if [ -n "$server_ip" ]; then
+        local site_url="http://$server_ip"
         echo "Access your application:"
-        echo -e "  ${CYAN}→${NC} http://$server_ip"
+        echo -e "  ${CYAN}→${NC} $site_url"
         echo ""
+        
+        # Offer to open browser for deploy and update actions
+        if [ "$action" = "Deployment" ] || [ "$action" = "Update" ]; then
+            if [ "$AUTO_CONFIRM" = false ]; then
+                read -p "Open site in browser? (Y/n) " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                    if open_browser "$site_url"; then
+                        print_success "Opening $site_url in browser..."
+                    else
+                        print_warning "Could not open browser automatically"
+                    fi
+                fi
+            fi
+        fi
     fi
     
     echo "Useful commands:"

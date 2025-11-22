@@ -2,7 +2,7 @@ provisioning_tags:
   - base
   - security
   - nodejs
-provisioning_strategy: sequential
+provisioning_strategy: parallel
 deployment_strategy: rolling
 deployment_tags:
   - dependencies

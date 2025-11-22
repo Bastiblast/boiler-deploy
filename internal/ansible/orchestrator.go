@@ -1,6 +1,7 @@
 package ansible
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -20,6 +21,8 @@ type Orchestrator struct {
 	mu                  sync.RWMutex
 	running             bool
 	stopChan            chan struct{}
+	ctx                 context.Context
+	cancel              context.CancelFunc
 	progressCb          func(serverName, message string)
 	deploySuccessCb     func(serverName, serverIP string) // Callback when deployment succeeds
 	useScript           bool // Use deploy.sh script instead of ansible directly
@@ -114,12 +117,13 @@ func (o *Orchestrator) Start(servers []*inventory.Server) {
 		return
 	}
 	
-	// Reset stopChan if needed
+	// Reset stopChan and create new context
 	o.stopChan = make(chan struct{})
+	o.ctx, o.cancel = context.WithCancel(context.Background())
 	o.running = true
 	o.mu.Unlock()
 
-	log.Println("[ORCHESTRATOR] Starting processQueue goroutine")
+	log.Println("[ORCHESTRATOR] Starting processQueue goroutine with context")
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -135,6 +139,10 @@ func (o *Orchestrator) Stop() {
 	defer o.mu.Unlock()
 
 	if o.running {
+		log.Println("[ORCHESTRATOR] Stopping: cancelling context and closing channels")
+		if o.cancel != nil {
+			o.cancel() // Cancel all running operations
+		}
 		close(o.stopChan)
 		o.running = false
 	}
@@ -194,12 +202,9 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 			log.Printf("[ORCHESTRATOR] Using deploy.sh for provision")
 			result, err = o.scriptExecutor.RunAction("provision", action.ServerName, progressChan)
 		} else {
-			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly with tags: %s", action.Tags)
-			if action.Tags != "" {
-				result, err = o.executor.ProvisionWithTags(action.ServerName, action.Tags, progressChan)
-			} else {
-				result, err = o.executor.Provision(action.ServerName, progressChan)
-			}
+			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly with context and tags: %s", action.Tags)
+			// Use context for cancellation support
+			result, err = o.executor.ProvisionWithContext(o.ctx, action.ServerName, action.Tags, progressChan)
 		}
 		close(progressChan)
 
@@ -224,12 +229,9 @@ func (o *Orchestrator) executeAction(action *status.QueuedAction, servers []*inv
 			log.Printf("[ORCHESTRATOR] Using deploy.sh for deploy")
 			result, err = o.scriptExecutor.RunAction("deploy", action.ServerName, progressChan)
 		} else {
-			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly with tags: %s", action.Tags)
-			if action.Tags != "" {
-				result, err = o.executor.DeployWithTags(action.ServerName, action.Tags, progressChan)
-			} else {
-				result, err = o.executor.Deploy(action.ServerName, progressChan)
-			}
+			log.Printf("[ORCHESTRATOR] Using ansible-playbook directly with context and tags: %s", action.Tags)
+			// Use context for cancellation support
+			result, err = o.executor.DeployWithContext(o.ctx, action.ServerName, action.Tags, progressChan)
 		}
 		close(progressChan)
 
