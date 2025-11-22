@@ -3,6 +3,8 @@
   apt:
     name: ufw
     state: present
+  when: enable_firewall | default(true)
+  tags: [firewall, ufw, install]
 
 - name: Configure UFW defaults
   ufw:
@@ -11,26 +13,32 @@
   loop:
     - { direction: 'incoming', policy: 'deny' }
     - { direction: 'outgoing', policy: 'allow' }
+  when: enable_firewall | default(true)
+  tags: [firewall, ufw, config]
 
 - name: Allow SSH
   ufw:
     rule: allow
     port: "{{ ssh_port }}"
     proto: tcp
+  when: enable_firewall | default(true)
+  tags: [firewall, ufw, ssh]
 
 - name: Allow HTTP
   ufw:
     rule: allow
     port: '80'
     proto: tcp
-  when: "'webservers' in group_names"
+  when: enable_firewall | default(true) and 'webservers' in group_names
+  tags: [firewall, ufw, http]
 
 - name: Allow HTTPS
   ufw:
     rule: allow
     port: '443'
     proto: tcp
-  when: "'webservers' in group_names"
+  when: enable_firewall | default(true) and 'webservers' in group_names
+  tags: [firewall, ufw, https]
 
 - name: Allow PostgreSQL from web servers
   ufw:
@@ -39,7 +47,8 @@
     proto: tcp
     from_ip: "{{ hostvars[item].ansible_host }}"
   loop: "{{ groups['webservers'] }}"
-  when: "'dbservers' in group_names"
+  when: enable_firewall | default(true) and 'dbservers' in group_names
+  tags: [firewall, ufw, postgresql]
 
 - name: Allow Prometheus access
   ufw:
@@ -47,7 +56,8 @@
     port: '9090'
     proto: tcp
     comment: 'Prometheus'
-  when: "'monitoring' in group_names"
+  when: enable_firewall | default(true) and 'monitoring' in group_names
+  tags: [firewall, ufw, monitoring]
 
 - name: Allow Grafana access
   ufw:
@@ -55,22 +65,29 @@
     port: '3001'
     proto: tcp
     comment: 'Grafana'
-  when: "'monitoring' in group_names"
+  when: enable_firewall | default(true) and 'monitoring' in group_names
+  tags: [firewall, ufw, monitoring]
 
 - name: Allow Node Exporter
   ufw:
     rule: allow
     port: '9100'
     proto: tcp
+  when: enable_firewall | default(true)
+  tags: [firewall, ufw, monitoring]
 
 - name: Enable UFW
   ufw:
     state: enabled
+  when: enable_firewall | default(true)
+  tags: [firewall, ufw, enable]
 
 - name: Install fail2ban
   apt:
     name: fail2ban
     state: present
+  when: enable_firewall | default(true)
+  tags: [fail2ban, install]
 
 - name: Configure fail2ban local jail
   template:
@@ -80,25 +97,39 @@
     group: root
     mode: '0644'
   notify: restart fail2ban
+  when: enable_firewall | default(true)
+  tags: [fail2ban, config]
 
 - name: Ensure fail2ban is enabled and started
   systemd:
     name: fail2ban
     enabled: yes
     state: started
+  when: enable_firewall | default(true)
+  tags: [fail2ban, service]
 
-- name: Configure SSH - disable root login
+- name: Configure SSH - disable password authentication
   lineinfile:
     path: /etc/ssh/sshd_config
     regexp: "{{ item.regexp }}"
     line: "{{ item.line }}"
     state: present
   loop:
-    - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
     - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
     - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
     - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
   notify: restart sshd
+  tags: [ssh, config, hardening]
+
+- name: Configure SSH - disable root login (production only)
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+  notify: restart sshd
+  when: not (allow_root_login | default(false))
+  tags: [ssh, config, hardening, root]
 
 - name: Install unattended-upgrades
   apt:
@@ -106,6 +137,8 @@
       - unattended-upgrades
       - apt-listchanges
     state: present
+  ignore_errors: yes
+  tags: [updates, auto-updates, install]
 
 - name: Configure unattended-upgrades
   template:
@@ -114,6 +147,7 @@
     owner: root
     group: root
     mode: '0644'
+  tags: [updates, auto-updates, config]
 
 - name: Enable automatic updates
   lineinfile:
@@ -124,3 +158,4 @@
     - 'APT::Periodic::Update-Package-Lists "1";'
     - 'APT::Periodic::Unattended-Upgrade "1";'
     - 'APT::Periodic::AutocleanInterval "7";'
+  tags: [updates, auto-updates, config]

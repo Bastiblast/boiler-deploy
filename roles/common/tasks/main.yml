@@ -3,16 +3,40 @@
   apt:
     update_cache: yes
     cache_valid_time: 3600
+  tags: [packages, apt, update]
 
-- name: Wait for any running apt processes
-  shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
+- name: Wait for dpkg/apt locks to be released
+  shell: |
+    timeout=300
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+          fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+          fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+      echo "Waiting for apt/dpkg lock... (timeout in ${timeout}s)"
+      sleep 2
+      timeout=$((timeout - 2))
+      if [ $timeout -le 0 ]; then
+        echo "ERROR: Timeout waiting for apt lock after 300s"
+        # Kill processes holding locks (last resort)
+        pkill -9 apt-get || true
+        pkill -9 dpkg || true
+        sleep 2
+        exit 1
+      fi
+    done
+    echo "All dpkg/apt locks released"
   changed_when: false
+  tags: [packages, apt]
 
 - name: Upgrade all packages
   apt:
     upgrade: dist
     autoremove: yes
     autoclean: yes
+  retries: 3
+  delay: 10
+  register: apt_upgrade_result
+  until: apt_upgrade_result is success
+  tags: [packages, apt, upgrade]
 
 - name: Install common packages
   apt:
@@ -33,12 +57,17 @@
       - rsync
       - unzip
       - cron
+      - tzdata
     state: present
+  ignore_errors: yes
+  tags: [packages, tools]
 
 - name: Set timezone
   timezone:
-    name: "{{ timezone | default('Europe/Paris') }}"
-  when: timezone is defined
+    name: "{{ timezone | default('UTC') }}"
+  when: timezone is defined and timezone != ""
+  ignore_errors: yes
+  tags: [config, timezone]
 
 - name: Create deploy user
   user:
@@ -47,12 +76,15 @@
     shell: /bin/bash
     create_home: yes
     state: present
+  tags: [users, deploy]
 
 - name: Add SSH key for deploy user
   authorized_key:
     user: "{{ deploy_user }}"
     key: "{{ lookup('file', ssh_key_path) }}"
     state: present
+  when: ssh_key_path is defined and ssh_key_path != ""
+  tags: [users, deploy, ssh]
 
 - name: Allow deploy user to sudo without password
   lineinfile:
@@ -61,6 +93,7 @@
     create: yes
     mode: '0440'
     validate: 'visudo -cf %s'
+  tags: [users, deploy, sudo]
 
 - name: Configure systemd journal retention
   lineinfile:
@@ -71,3 +104,4 @@
     - { regexp: '^#?SystemMaxUse=', line: 'SystemMaxUse=500M' }
     - { regexp: '^#?MaxRetentionSec=', line: 'MaxRetentionSec=1month' }
   notify: restart journald
+  tags: [config, logs, systemd]

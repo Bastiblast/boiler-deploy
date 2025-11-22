@@ -1,0 +1,33 @@
+# ⚠️ SECURITY: For testing only - DO NOT use in production
+# See docs/SECURITY.md for secure configuration
+allow_root_login: true
+deploy_user: root
+
+app_branch: main
+app_current_dir: '{{ app_dir }}/current'
+app_dir: /var/www/docker
+app_environment: production
+app_name: docker
+app_port: 3000
+app_releases_dir: '{{ app_dir }}/releases'
+app_repo: https://github.com/Bastiblast/portefolio
+app_shared_dir: '{{ app_dir }}/shared'
+backup_dir: /var/backups
+backup_retention_days: 7
+deploy_user_groups:
+    - sudo
+    - www-data
+enable_firewall: false
+nginx_client_max_body_size: 20M
+nginx_keepalive_timeout: 65
+nginx_worker_connections: 1024
+nginx_worker_processes: auto
+node_env: production
+nodejs_version: "20"
+pm2_app_name: '{{ app_name }}'
+pm2_instances: 2
+pm2_max_memory: 512M
+ssh_port: 22
+ssl_domains:
+    - docker.example.com
+ssl_email: admin@example.com

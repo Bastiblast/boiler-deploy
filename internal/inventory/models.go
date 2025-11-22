@@ -1,0 +1,60 @@
+package inventory
+
+// Environment represents a deployment environment
+type Environment struct {
+	Name           string   `yaml:"name"`
+	Services       Services `yaml:"services"`
+	Config         Config   `yaml:"config"`
+	Servers        []Server `yaml:"servers"`
+	MonoServer     bool     `yaml:"mono_server,omitempty"`
+	MonoIP         string   `yaml:"mono_ip,omitempty"`
+	MonoSSHKey     bool     `yaml:"mono_ssh_key,omitempty"`
+	MonoSSHKeyPath string   `yaml:"mono_ssh_key_path,omitempty"`
+}
+
+// Services represents enabled services
+type Services struct {
+	Web        bool `yaml:"web"`
+	Database   bool `yaml:"database"`
+	Monitoring bool `yaml:"monitoring"`
+}
+
+// Config represents environment configuration
+type Config struct {
+	AppName       string `yaml:"app_name"`
+	AppRepo       string `yaml:"app_repo"`
+	AppBranch     string `yaml:"app_branch"`
+	NodeJSVersion string `yaml:"nodejs_version"`
+	AppPort       string `yaml:"app_port"`
+	DeployUser    string `yaml:"deploy_user"`
+	Timezone      string `yaml:"timezone"`
+}
+
+// Server represents a single server
+type Server struct {
+	Name          string `yaml:"name"`
+	IP            string `yaml:"ip"`
+	Port          int    `yaml:"port"`
+	SSHUser       string `yaml:"ssh_user"`
+	SSHKeyPath    string `yaml:"ssh_key_path"`
+	Type          string `yaml:"type"` // web, db, monitoring
+	AnsibleBecome bool   `yaml:"ansible_become"`
+	
+	// Application configuration (only for web servers)
+	AppPort       int    `yaml:"app_port,omitempty"`
+	HTTPPort      int    `yaml:"http_port,omitempty"` // External HTTP port (for browser access, Docker mapped port)
+	GitRepo       string `yaml:"git_repo,omitempty"`
+	GitBranch     string `yaml:"git_branch,omitempty"`
+	NodeVersion   string `yaml:"node_version,omitempty"`
+	
+	// SSH test status (not saved to YAML)
+	SSHTested     bool   `yaml:"-"`
+	SSHStatus     string `yaml:"-"`
+}
+
+// ValidationResult holds validation results
+type ValidationResult struct {
+	Server  string
+	Valid   bool
+	Message string
+}

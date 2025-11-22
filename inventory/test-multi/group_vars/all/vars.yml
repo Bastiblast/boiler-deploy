@@ -1,0 +1,28 @@
+---
+# Test-multi environment variables
+# ⚠️ SECURITY: Test environment - See docs/SECURITY.md for production config
+deploy_user: root
+deploy_user_groups: sudo,www-data
+
+# Application
+app_name: portefolio
+app_repo: https://github.com/Bastiblast/portefolio.git
+app_branch: main
+app_base_dir: /var/www
+app_releases_dir: /var/www/portefolio/releases
+app_shared_dir: /var/www/portefolio/shared
+app_current_dir: /var/www/portefolio/current
+
+# Node.js
+required_node_version: "20"
+package_manager: pnpm
+needs_build: true
+app_type: nextjs
+
+# PM2
+pm2_app_name: portefolio
+
+# SSH
+ssh_key_path: ~/.ssh/boiler_test_rsa.pub
+allow_root_login: true
+timezone: Europe/Paris
