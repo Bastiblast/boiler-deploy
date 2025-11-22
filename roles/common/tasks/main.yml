@@ -5,13 +5,26 @@
     cache_valid_time: 3600
   tags: [packages, apt, update]
 
-- name: Wait for dpkg lock to be released
-  wait_for:
-    path: /var/lib/dpkg/lock-frontend
-    state: started
-    timeout: 300
+- name: Wait for dpkg/apt locks to be released
+  shell: |
+    timeout=300
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+          fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+          fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+      echo "Waiting for apt/dpkg lock... (timeout in ${timeout}s)"
+      sleep 2
+      timeout=$((timeout - 2))
+      if [ $timeout -le 0 ]; then
+        echo "ERROR: Timeout waiting for apt lock after 300s"
+        # Kill processes holding locks (last resort)
+        pkill -9 apt-get || true
+        pkill -9 dpkg || true
+        sleep 2
+        exit 1
+      fi
+    done
+    echo "All dpkg/apt locks released"
   changed_when: false
-  failed_when: false
   tags: [packages, apt]
 
 - name: Upgrade all packages
@@ -19,6 +32,10 @@
     upgrade: dist
     autoremove: yes
     autoclean: yes
+  retries: 3
+  delay: 10
+  register: apt_upgrade_result
+  until: apt_upgrade_result is success
   tags: [packages, apt, upgrade]
 
 - name: Install common packages
