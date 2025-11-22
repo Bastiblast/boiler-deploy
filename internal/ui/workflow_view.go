@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bastiblast/boiler-deploy/internal/ansible"
@@ -18,6 +19,7 @@ import (
 )
 
 type WorkflowView struct {
+	mu                 sync.Mutex // Protects concurrent access to shared state
 	environment        string
 	servers            []*inventory.Server
 	statuses           map[string]*status.ServerStatus
@@ -144,6 +146,8 @@ func (wv *WorkflowView) validateAllServers() {
 }
 
 func (wv *WorkflowView) onProgress(serverName, message string) {
+	wv.mu.Lock()
+	
 	wv.progress[serverName] = message
 	
 	// Add to realtime logs
@@ -155,7 +159,9 @@ func (wv *WorkflowView) onProgress(serverName, message string) {
 		wv.realtimeLogs = wv.realtimeLogs[len(wv.realtimeLogs)-wv.maxRealtimeLogs:]
 	}
 	
-	// Update viewport content
+	wv.mu.Unlock()
+	
+	// Update viewport content (after unlocking to avoid holding lock during render)
 	wv.updateLogsViewport()
 }
 
@@ -203,13 +209,19 @@ func (wv *WorkflowView) updateLogsViewport() {
 		return
 	}
 	
+	// Copy logs slice under lock for safe iteration
+	wv.mu.Lock()
+	logsCopy := make([]string, len(wv.realtimeLogs))
+	copy(logsCopy, wv.realtimeLogs)
+	wv.mu.Unlock()
+	
 	var b strings.Builder
 	
-	if len(wv.realtimeLogs) == 0 {
+	if len(logsCopy) == 0 {
 		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 		b.WriteString(dimStyle.Render("Waiting for actions...") + "\n")
 	} else {
-		for _, line := range wv.realtimeLogs {
+		for _, line := range logsCopy {
 			// Truncate very long lines
 			displayLine := line
 			maxWidth := wv.logsViewport.Width - 4
@@ -345,12 +357,15 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			wv.deployedServerIP, wv.showBrowserPrompt)
 		
 		logLine := fmt.Sprintf("[%s] ✓ Deployment successful! Site ready at http://%s", msg.serverName, msg.serverIP)
+		
+		wv.mu.Lock()
 		wv.realtimeLogs = append(wv.realtimeLogs, logLine)
 		// Note: Browser prompt now shown as sticky footer (won't be truncated)
 		
 		if len(wv.realtimeLogs) > wv.maxRealtimeLogs {
 			wv.realtimeLogs = wv.realtimeLogs[len(wv.realtimeLogs)-wv.maxRealtimeLogs:]
 		}
+		wv.mu.Unlock()
 		
 		wv.updateLogsViewport()
 		
@@ -378,15 +393,19 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			url := fmt.Sprintf("http://%s:%d", wv.deployedServerIP, port)
 			log.Printf("[WORKFLOW] Opening browser for URL: %s (detected port: %d)", url, port)
 			
+			var logLine string
 			if err := OpenBrowser(url); err != nil {
-				logLine := fmt.Sprintf("Failed to open browser: %v", err)
-				wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+				logLine = fmt.Sprintf("Failed to open browser: %v", err)
 				log.Printf("[WORKFLOW] Browser open failed: %v", err)
 			} else {
-				logLine := fmt.Sprintf("Opening %s in browser...", url)
-				wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+				logLine = fmt.Sprintf("Opening %s in browser...", url)
 				log.Printf("[WORKFLOW] Browser opened successfully")
 			}
+			
+			wv.mu.Lock()
+			wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+			wv.mu.Unlock()
+			
 			wv.showBrowserPrompt = false
 			wv.deployedServerIP = ""
 			wv.updateLogsViewport()
