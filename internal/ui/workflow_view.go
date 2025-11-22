@@ -45,8 +45,6 @@ type WorkflowView struct {
 	height             int
 	configMgr          *config.Manager
 	configOpts         *config.ConfigOptions
-	deployedServerIP   string // IP of last successfully deployed server
-	showBrowserPrompt  bool   // Show prompt to open browser
 	deploySuccessChan  chan deploySuccessMsg // Channel for deploy success events
 }
 
@@ -349,18 +347,11 @@ func (wv *WorkflowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deploySuccessMsg:
 		log.Printf("[WORKFLOW] Processing deploySuccessMsg: %s -> %s", msg.serverName, msg.serverIP)
 		
-		// Store the deployed server IP and show browser prompt
-		wv.deployedServerIP = msg.serverIP
-		wv.showBrowserPrompt = true
-		
-		log.Printf("[WORKFLOW] Browser prompt activated: deployedServerIP=%s, showBrowserPrompt=%v", 
-			wv.deployedServerIP, wv.showBrowserPrompt)
-		
 		logLine := fmt.Sprintf("[%s] ✓ Deployment successful! Site ready at http://%s", msg.serverName, msg.serverIP)
 		
 		wv.mu.Lock()
 		wv.realtimeLogs = append(wv.realtimeLogs, logLine)
-		// Note: Browser prompt now shown as sticky footer (won't be truncated)
+		// Note: Browser option shown in Progress column for deployed servers
 		
 		if len(wv.realtimeLogs) > wv.maxRealtimeLogs {
 			wv.realtimeLogs = wv.realtimeLogs[len(wv.realtimeLogs)-wv.maxRealtimeLogs:]
@@ -383,44 +374,43 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	
 	switch msg.String() {
 	case "o":
-		// Open browser if deployment succeeded
-		log.Printf("[WORKFLOW] 'o' key pressed. showBrowserPrompt=%v, deployedServerIP=%s", 
-			wv.showBrowserPrompt, wv.deployedServerIP)
-		
-		if wv.showBrowserPrompt && wv.deployedServerIP != "" {
-			// Detect correct port from server configuration
-			port := wv.detectServerPort(wv.deployedServerIP)
-			url := fmt.Sprintf("http://%s:%d", wv.deployedServerIP, port)
-			log.Printf("[WORKFLOW] Opening browser for URL: %s (detected port: %d)", url, port)
+		// Open browser for selected server (if deployed)
+		if wv.cursor >= 0 && wv.cursor < len(wv.servers) {
+			server := wv.servers[wv.cursor]
+			st := wv.statuses[server.Name]
 			
-			var logLine string
-			if err := OpenBrowser(url); err != nil {
-				logLine = fmt.Sprintf("Failed to open browser: %v", err)
-				log.Printf("[WORKFLOW] Browser open failed: %v", err)
+			log.Printf("[WORKFLOW] 'o' key pressed for server: %s, status: %s", server.Name, st.State)
+			
+			// Only allow browser open if server is deployed
+			if st != nil && st.State == status.StateDeployed {
+				// Detect correct port from server configuration
+				port := wv.detectServerPort(server.IP)
+				url := fmt.Sprintf("http://%s:%d", server.IP, port)
+				log.Printf("[WORKFLOW] Opening browser for URL: %s (detected port: %d)", url, port)
+				
+				var logLine string
+				if err := OpenBrowser(url); err != nil {
+					logLine = fmt.Sprintf("[%s] Failed to open browser: %v", server.Name, err)
+					log.Printf("[WORKFLOW] Browser open failed: %v", err)
+				} else {
+					logLine = fmt.Sprintf("[%s] Opening %s in browser...", server.Name, url)
+					log.Printf("[WORKFLOW] Browser opened successfully")
+				}
+				
+				wv.mu.Lock()
+				wv.realtimeLogs = append(wv.realtimeLogs, logLine)
+				wv.mu.Unlock()
+				
+				wv.updateLogsViewport()
 			} else {
-				logLine = fmt.Sprintf("Opening %s in browser...", url)
-				log.Printf("[WORKFLOW] Browser opened successfully")
+				log.Printf("[WORKFLOW] Server %s not deployed (status: %s), cannot open browser", 
+					server.Name, st.State)
 			}
-			
-			wv.mu.Lock()
-			wv.realtimeLogs = append(wv.realtimeLogs, logLine)
-			wv.mu.Unlock()
-			
-			wv.showBrowserPrompt = false
-			wv.deployedServerIP = ""
-			wv.updateLogsViewport()
-		} else {
-			log.Printf("[WORKFLOW] Browser prompt not active or no IP set")
 		}
 	
 	case "q", "esc":
-		// Dismiss browser prompt if showing, otherwise return to workflow selector
-		if wv.showBrowserPrompt {
-			wv.showBrowserPrompt = false
-			wv.deployedServerIP = ""
-		} else {
-			return NewWorkflowSelector(), nil
-		}
+		// Return to workflow selector
+		return NewWorkflowSelector(), nil
 		
 	// Logs viewport scrolling
 	case "pgup":
@@ -534,13 +524,6 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		wv.orchestrator.ClearQueue()
 	
-	default:
-		// Dismiss browser prompt on any other key (space, enter, arrows, etc)
-		if wv.showBrowserPrompt {
-			log.Printf("[WORKFLOW] Browser prompt dismissed by key: %s", msg.String())
-			wv.showBrowserPrompt = false
-			wv.deployedServerIP = ""
-		}
 	}
 
 	return wv, nil
@@ -770,6 +753,8 @@ func (wv *WorkflowView) formatStatus(st *status.ServerStatus) (string, string) {
 		icon = yellowStyle.Render("⚡ Deploying")
 	case status.StateDeployed:
 		icon = greenStyle.Render("✓ Deployed")
+		// Show browser hint for deployed servers
+		progressDetails = "Press 'o' to open in browser"
 	case status.StateVerifying:
 		icon = blueStyle.Render("🔍 Verifying")
 	case status.StateFailed:
@@ -839,20 +824,6 @@ func (wv *WorkflowView) renderRealtimeLogs() string {
 			Foreground(lipgloss.Color("240")).
 			Italic(true)
 		b.WriteString("\n" + infoStyle.Render(scrollInfo))
-	}
-	
-	// Show sticky browser prompt if deployment succeeded
-	if wv.showBrowserPrompt && wv.deployedServerIP != "" {
-		port := wv.detectServerPort(wv.deployedServerIP)
-		promptStyle := lipgloss.NewStyle().
-			Background(lipgloss.Color("22")).
-			Foreground(lipgloss.Color("255")).
-			Bold(true).
-			Padding(0, 1)
-		
-		promptMsg := fmt.Sprintf("🌐 Press 'o' to open http://%s:%d in browser | 'q' to dismiss", 
-			wv.deployedServerIP, port)
-		b.WriteString("\n" + promptStyle.Render(promptMsg))
 	}
 	
 	return b.String()
