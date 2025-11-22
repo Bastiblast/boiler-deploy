@@ -134,7 +134,7 @@ Le code gère automatiquement:
 - **Queue size**: `orchestrator.GetQueueSize()`
 - **Completion time**: Comparer avec mode séquentiel
 
-## Exemples
+## Examples
 
 ### Configuration minimale
 
