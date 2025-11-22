@@ -476,7 +476,8 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "p":
 		// Open tag selector for provision
-		if len(wv.getSelectedServers()) > 0 {
+		// Use checked servers, or server at cursor if none checked
+		if len(wv.getServersForAction()) > 0 {
 			selector := NewTagSelectorWithDefaults("provision", wv.configOpts.ProvisioningTags)
 			// Initialize with current terminal dimensions
 			selector.width = wv.width
@@ -488,7 +489,8 @@ func (wv *WorkflowView) handleMainKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "d":
 		// Open tag selector for deploy
-		if len(wv.getSelectedServers()) > 0 {
+		// Use checked servers, or server at cursor if none checked
+		if len(wv.getServersForAction()) > 0 {
 			selector := NewTagSelectorWithDefaults("deploy", wv.configOpts.DeploymentTags)
 			// Initialize with current terminal dimensions
 			selector.width = wv.width
@@ -539,7 +541,8 @@ func (wv *WorkflowView) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 
 func (wv *WorkflowView) executeActionWithTags(action, tags string) {
-	names := wv.getSelectedServerNames()
+	// Use checked servers, or server at cursor if none checked
+	names := wv.getServerNamesForAction()
 	
 	if len(names) == 0 {
 		return
@@ -602,12 +605,44 @@ func (wv *WorkflowView) getSelectedServers() []*inventory.Server {
 	return result
 }
 
+// getServersForAction returns servers to use for action (provision/deploy)
+// Logic: If servers are checked, use checked servers
+//        If none checked, use server at cursor position
+func (wv *WorkflowView) getServersForAction() []*inventory.Server {
+	selected := wv.getSelectedServers()
+	
+	// If servers are checked, use them
+	if len(selected) > 0 {
+		return selected
+	}
+	
+	// If no servers checked, use server at cursor (if valid)
+	if wv.cursor >= 0 && wv.cursor < len(wv.servers) {
+		return []*inventory.Server{wv.servers[wv.cursor]}
+	}
+	
+	// Fallback: empty list
+	return []*inventory.Server{}
+}
+
 func (wv *WorkflowView) getSelectedServerNames() []string {
 	result := make([]string, 0)
 	for _, s := range wv.servers {
 		if wv.selectedServers[s.Name] {
 			result = append(result, s.Name)
 		}
+	}
+	return result
+}
+
+// getServerNamesForAction returns server names for action (provision/deploy)
+// Logic: If servers are checked, use checked servers
+//        If none checked, use server at cursor position
+func (wv *WorkflowView) getServerNamesForAction() []string {
+	servers := wv.getServersForAction()
+	result := make([]string, 0, len(servers))
+	for _, s := range servers {
+		result = append(result, s.Name)
 	}
 	return result
 }
