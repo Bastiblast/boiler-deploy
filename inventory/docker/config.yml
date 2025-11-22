@@ -1,14 +1,14 @@
 provisioning_tags:
-  - base
-  - security
-  - nodejs
+    - base
+    - security
+    - nodejs
 provisioning_strategy: parallel
 deployment_strategy: rolling
-max_parallel_workers: 3
 deployment_tags:
-  - dependencies
-  - deploy
-  - restart
+    - dependencies
+    - deploy
+    - restart
+max_parallel_workers: 3
 health_check_enabled: true
 health_check_timeout: 30s
 health_check_retries: 3
